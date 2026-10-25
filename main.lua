@@ -1,7 +1,7 @@
 --приветик бро! Этот код без вирусов и полностью бесплатный! Пользуйся на здоровье<3
 --[[
-	MMV Admin Panel | Gemini Ai
-	Version 5.11 (Fixed Combat & Shot Mechanics)
+	MMV Admin Panel | Gemini Ai & ChatGPT Integration
+	Version 5.19 (Full Script + Multi-Touch Dragging + Fixed ESP Box/Line/Name + Knife Visibility Fix)
 ]]
 
 if getgenv().MMV_AdminPanel_Running then
@@ -44,9 +44,14 @@ local Config = {
 		AutoGun = false,
 		AutoShot = false,
 		AutoKill = false,
+		AutoThrow = false,
 	},
 	Fling = {
 		Active = false,
+	},
+	Exploits = {
+		StealthActive = false,
+		LastTrapPlaced = 0,
 	}
 }
 
@@ -64,8 +69,68 @@ if not ScreenGui.Parent then
 	ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 end
 
+-- Умное перетаскивание с поддержкой Multi-Touch (фикс джойстика)
+local function MakeDraggable(guiObject)
+	local dragging = false
+	local dragInput = nil
+	local dragStart = nil
+	local startPos = nil
+
+	guiObject.Active = true
+
+	guiObject.InputBegan:Connect(function(input)
+		local isTouch = input.UserInputType == Enum.UserInputType.Touch
+		local isMouse = input.UserInputType == Enum.UserInputType.MouseButton1
+
+		if dragging or not (isTouch or isMouse) then
+			return
+		end
+
+		dragging = true
+		dragInput = isTouch and input or nil
+		dragStart = input.Position
+		startPos = guiObject.Position
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if not dragging then
+			return
+		end
+
+		local isOurTouch = dragInput ~= nil and input == dragInput
+		local isMouseMove = dragInput == nil
+			and input.UserInputType == Enum.UserInputType.MouseMovement
+
+		if not isOurTouch and not isMouseMove then
+			return
+		end
+
+		local delta = input.Position - dragStart
+
+		guiObject.Position = UDim2.new(
+			startPos.X.Scale,
+			startPos.X.Offset + delta.X,
+			startPos.Y.Scale,
+			startPos.Y.Offset + delta.Y
+		)
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		local isOurTouch = dragInput ~= nil and input == dragInput
+		local isOurMouse = dragInput == nil
+			and input.UserInputType == Enum.UserInputType.MouseButton1
+
+		if dragging and (isOurTouch or isOurMouse) then
+			dragging = false
+			dragInput = nil
+			dragStart = nil
+			startPos = nil
+		end
+	end)
+end
+
 ----------------------------------------------------------------
--- 1. Diamond (Радужный ромб) - ImageButton
+-- 1. Diamond (Радужный ромб - Иконка открытия)
 ----------------------------------------------------------------
 local ToggleIcon = Instance.new("ImageButton")
 ToggleIcon.Name = "ToggleIcon"
@@ -74,7 +139,6 @@ ToggleIcon.Position = UDim2.new(0.5, -27, 0, 16)
 ToggleIcon.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 ToggleIcon.BorderSizePixel = 0
 ToggleIcon.Image = "rbxassetid://96009357671193"
-ToggleIcon.ImageTransparency = 0
 ToggleIcon.ScaleType = Enum.ScaleType.Fit
 ToggleIcon.ZIndex = 10
 ToggleIcon.Parent = ScreenGui
@@ -84,26 +148,7 @@ local ts = Instance.new("UIStroke")
 ts.Color = Color3.fromRGB(0, 0, 0)
 ts.Thickness = 2
 ts.Parent = ToggleIcon
-
-do
-	local dragging, dragStart, startPos
-	ToggleIcon.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			dragStart = input.Position
-			startPos = ToggleIcon.Position
-			input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then dragging = false end
-			end)
-		end
-	end)
-	UserInputService.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			local delta = input.Position - dragStart
-			ToggleIcon.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-		end
-	end)
-end
+MakeDraggable(ToggleIcon)
 
 ----------------------------------------------------------------
 -- Главное окно
@@ -118,6 +163,7 @@ MainFrame.Active = true
 MainFrame.ZIndex = 2
 MainFrame.Parent = ScreenGui
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
+MakeDraggable(MainFrame)
 
 local ms = Instance.new("UIStroke")
 ms.Color = Color3.fromRGB(0, 0, 0)
@@ -125,7 +171,7 @@ ms.Thickness = 4
 ms.Parent = MainFrame
 
 ----------------------------------------------------------------
--- 2. Suitman (Фоновое изображение) - ImageLabel
+-- 2. Suitman (Фоновое изображение)
 ----------------------------------------------------------------
 local BgImage = Instance.new("ImageLabel")
 BgImage.Name = "BgImage"
@@ -138,38 +184,11 @@ BgImage.ScaleType = Enum.ScaleType.Crop
 BgImage.ZIndex = 1
 BgImage.Parent = MainFrame
 
--- Диагностика и отслеживание статуса загрузки Creator Store ассетов
 task.spawn(function()
 	pcall(function()
-		ContentProvider:PreloadAsync({ToggleIcon, BgImage}, function(assetId, status)
-			if status == Enum.AssetFetchStatus.Success then
-				print("[MMV Asset Loader] Успешно загружен ассет:", assetId)
-			elseif status == Enum.AssetFetchStatus.Failure then
-				warn("[MMV Asset Loader] Ошибка загрузки ассета:", assetId)
-			end
-		end)
+		ContentProvider:PreloadAsync({ToggleIcon, BgImage})
 	end)
 end)
-
-do
-	local dragging, dragStart, startPos
-	MainFrame.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			dragStart = input.Position
-			startPos = MainFrame.Position
-			input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then dragging = false end
-			end)
-		end
-	end)
-	UserInputService.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			local delta = input.Position - dragStart
-			MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-		end
-	end)
-end
 
 local menuVisible = true
 ToggleIcon.MouseButton1Click:Connect(function()
@@ -346,7 +365,6 @@ local function HasGun()
 	return false, nil
 end
 
--- Сделать функцию доступной глобально
 _G.GetPlayerRole = GetPlayerRole
 
 -- ====================== ESP ======================
@@ -354,7 +372,6 @@ local Highlights = {}
 local Billboards = {}
 local Lines = {}
 local Boxes = {}
-
 local ItemHighlights = {}
 local ItemBillboards = {}
 
@@ -373,27 +390,9 @@ end
 
 local function ClearAllESP()
 	for player, _ in pairs(Highlights) do RemovePlayerESP(player) end
-	for player, _ in pairs(Billboards) do RemovePlayerESP(player) end
-	for player, _ in pairs(Lines) do RemovePlayerESP(player) end
-	for player, _ in pairs(Boxes) do RemovePlayerESP(player) end
+	for player, _ in pairs(Lines) do if Lines[player] then pcall(function() Lines[player]:Remove() end) Lines[player] = nil end end
+	for player, _ in pairs(Boxes) do if Boxes[player] then pcall(function() Boxes[player]:Remove() end) Boxes[player] = nil end end
 	ClearAllItemESP()
-end
-
-local function IsTrapVisible(obj)
-	local visible = false
-	pcall(function()
-		if obj:IsA("BasePart") then
-			visible = (obj.Transparency < 1)
-		elseif obj:IsA("Model") then
-			for _, child in ipairs(obj:GetDescendants()) do
-				if child:IsA("BasePart") and child.Transparency < 1 then
-					visible = true
-					break
-				end
-			end
-		end
-	end)
-	return visible
 end
 
 local function UpdateESP()
@@ -407,9 +406,10 @@ local function UpdateESP()
 			local char = player.Character
 			local root = char:FindFirstChild("HumanoidRootPart")
 			local head = char:FindFirstChild("Head")
+			local hum = char:FindFirstChildOfClass("Humanoid")
 
-			if root and head then
-				local role, color = GetPlayerRole(player)
+			if root and head and hum and hum.Health > 0 then
+				local role, color = GetRoleColor(player)
 
 				if Config.ESP.Chams then
 					local hl = Highlights[player]
@@ -434,6 +434,7 @@ local function UpdateESP()
 					if not bb or not bb.Parent or bb.Parent ~= char then
 						if bb then pcall(function() bb:Destroy() end) end
 						bb = Instance.new("BillboardGui")
+						bb.Name = "MMV_ESP_Name"
 						bb.Size = UDim2.new(0, 150, 0, 42)
 						bb.StudsOffset = Vector3.new(0, 2.9, 0)
 						bb.AlwaysOnTop = true
@@ -477,9 +478,7 @@ local function UpdateESP()
 				if Config.ESP.Gun and (nameLower == "gundrop" or nameLower == "gun") then
 					validObjects[obj] = {text = "GUN DROP", color = GetRoleColor("Gun")}
 				elseif Config.ESP.Trap and (nameLower == "trap" or nameLower:find("trap")) then
-					if IsTrapVisible(obj) then
-						validObjects[obj] = {text = "TRAP", color = GetRoleColor("Trap")}
-					end
+					validObjects[obj] = {text = "TRAP", color = GetRoleColor("Trap")}
 				end
 			end
 		end)
@@ -505,7 +504,7 @@ local function UpdateESP()
 				bb.Size = UDim2.new(0, 100, 0, 30)
 				bb.StudsOffset = Vector3.new(0, 1.8, 0)
 				bb.AlwaysOnTop = true
-				bb.Adornee = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")) or obj
+				bb.Adornee = obj
 				local lbl = Instance.new("TextLabel")
 				lbl.Size = UDim2.new(1, 0, 1, 0)
 				lbl.BackgroundTransparency = 1
@@ -517,79 +516,72 @@ local function UpdateESP()
 				bb.Parent = obj
 				ItemBillboards[obj] = bb
 			end
-			local lbl = bb:FindFirstChildOfClass("TextLabel")
-			if lbl then lbl.TextColor3 = info.color end
 			bb.Enabled = true
 		end)
 	end
 
 	for obj, hl in pairs(ItemHighlights) do
-		if not validObjects[obj] then
-			pcall(function() hl:Destroy() end)
-			ItemHighlights[obj] = nil
-		end
-	end
-	for obj, bb in pairs(ItemBillboards) do
-		if not validObjects[obj] then
-			pcall(function() bb:Destroy() end)
-			ItemBillboards[obj] = nil
-		end
+		if not validObjects[obj] then pcall(function() hl:Destroy() end) ItemHighlights[obj] = nil end
 	end
 end
 
-local function SetupPlayerEvents(player)
-	player.CharacterRemoving:Connect(function() RemovePlayerESP(player) end)
-end
-
-for _, p in ipairs(Players:GetPlayers()) do
-	if p ~= LocalPlayer then SetupPlayerEvents(p) end
-end
 Players.PlayerAdded:Connect(function(p)
-	if p ~= LocalPlayer then SetupPlayerEvents(p) end
+	p.CharacterAdded:Connect(function() RemovePlayerESP(p) end)
 end)
-Players.PlayerRemoving:Connect(function(p) RemovePlayerESP(p) end)
+Players.PlayerRemoving:Connect(RemovePlayerESP)
 
 if HasDrawing then
 	RunService.RenderStepped:Connect(function()
-		if not getgenv().MMV_AdminPanel_Running or not Config.ESP.Enabled then return end
-		if not (Config.ESP.Line or Config.ESP.Box) then return end
+		if not getgenv().MMV_AdminPanel_Running or not Config.ESP.Enabled then
+			for player, _ in pairs(Lines) do if Lines[player] then Lines[player].Visible = false end end
+			for player, _ in pairs(Boxes) do if Boxes[player] then Boxes[player].Visible = false end end
+			return
+		end
 
 		local screenBottom = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y - 8)
 
 		for _, player in ipairs(Players:GetPlayers()) do
 			if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-				local role, color = GetRoleColor(player)
-				local root = player.Character.HumanoidRootPart
-				local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
+				local char = player.Character
+				local root = char.HumanoidRootPart
+				local hum = char:FindFirstChildOfClass("Humanoid")
 
-				if onScreen and pos.Z > 0 then
-					if Config.ESP.Line then
-						local line = Lines[player]
-						if not line then
-							line = DrawingLib.new("Line")
-							line.Thickness = 2
-							Lines[player] = line
-						end
-						line.From = screenBottom
-						line.To = Vector2.new(pos.X, pos.Y)
-						line.Color = color
-						line.Visible = true
-					elseif Lines[player] then Lines[player].Visible = false end
+				if hum and hum.Health > 0 then
+					local role, color = GetRoleColor(player)
+					local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
 
-					if Config.ESP.Box then
-						local box = Boxes[player]
-						if not box then
-							box = DrawingLib.new("Square")
-							box.Thickness = 2
-							box.Filled = false
-							Boxes[player] = box
-						end
-						local scale = math.clamp(70 / (pos.Z * 0.09), 28, 95)
-						box.Size = Vector2.new(scale * 0.72, scale)
-						box.Position = Vector2.new(pos.X - scale * 0.36, pos.Y - scale * 0.5)
-						box.Color = color
-						box.Visible = true
-					elseif Boxes[player] then Boxes[player].Visible = false end
+					if onScreen and pos.Z > 0 then
+						if Config.ESP.Line then
+							local line = Lines[player]
+							if not line then
+								line = DrawingLib.new("Line")
+								line.Thickness = 2
+								Lines[player] = line
+							end
+							line.From = screenBottom
+							line.To = Vector2.new(pos.X, pos.Y)
+							line.Color = color
+							line.Visible = true
+						elseif Lines[player] then Lines[player].Visible = false end
+
+						if Config.ESP.Box then
+							local box = Boxes[player]
+							if not box then
+								box = DrawingLib.new("Square")
+								box.Thickness = 2
+								box.Filled = false
+								Boxes[player] = box
+							end
+							local scale = math.clamp(70 / (pos.Z * 0.09), 28, 95)
+							box.Size = Vector2.new(scale * 0.72, scale)
+							box.Position = Vector2.new(pos.X - scale * 0.36, pos.Y - scale * 0.5)
+							box.Color = color
+							box.Visible = true
+						elseif Boxes[player] then Boxes[player].Visible = false end
+					else
+						if Lines[player] then Lines[player].Visible = false end
+						if Boxes[player] then Boxes[player].Visible = false end
+					end
 				else
 					if Lines[player] then Lines[player].Visible = false end
 					if Boxes[player] then Boxes[player].Visible = false end
@@ -601,175 +593,6 @@ if HasDrawing then
 		end
 	end)
 end
-
--- ====================== COMBAT (ИСПРАВЛЕНО) ======================
-local isFiring = false
-
-local function PickUpGun()
-	local gunDrop = workspace:FindFirstChild("GunDrop") or workspace:FindFirstChild("Gun")
-	if not gunDrop then return end
-	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
-	local target = gunDrop:IsA("Model") and (gunDrop.PrimaryPart or gunDrop:FindFirstChildWhichIsA("BasePart")) or gunDrop
-	if target and target:IsA("BasePart") then
-		pcall(function()
-			firetouchinterest(hrp, target, 0)
-			task.wait()
-			firetouchinterest(hrp, target, 1)
-		end)
-	end
-end
-
-local function ShotMurder()
-	if isFiring then return end
-	local has, tool = HasGun()
-	if not has or not tool then return end
-	local remote = tool:FindFirstChild("KnifeServer") and tool.KnifeServer:FindFirstChild("SlashStart")
-	if not remote then return end
-	
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer and player.Character then
-			local role = GetRoleColor(player) -- Проверка роли
-			local actualRole = GetPlayerRole(player)
-			if actualRole == "Murder" then
-				local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-				local head = player.Character:FindFirstChild("Head")
-				if hrp then
-					isFiring = true
-					local targetPos = head and head.Position or hrp.Position
-					pcall(function() 
-						remote:FireServer(1, targetPos) 
-					end)
-					task.wait(0.1)
-					isFiring = false
-					break
-				end
-			end
-		end
-	end
-end
-
-local function KillMurder()
-	if isFiring then return end
-	local has, tool = HasGun()
-	if not has or not tool then return end
-	local remote = tool:FindFirstChild("KnifeServer") and tool.KnifeServer:FindFirstChild("SlashStart")
-	if not remote then return end
-	local myHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-	if not myHRP then return end
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer and player.Character then
-			local actualRole = GetPlayerRole(player)
-			if actualRole == "Murder" then
-				local targetHRP = player.Character:FindFirstChild("HumanoidRootPart")
-				local head = player.Character:FindFirstChild("Head")
-				if targetHRP then
-					isFiring = true
-					myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 4.2)
-					task.wait(0.04)
-					local targetPos = head and head.Position or targetHRP.Position
-					pcall(function() 
-						remote:FireServer(1, targetPos) 
-					end)
-					task.wait(0.1)
-					isFiring = false
-					break
-				end
-			end
-		end
-	end
-end
-
-local ActionButtons = {}
-local function CreateActionScreenButton(name, text, defaultPos, actionFunc)
-	local btn = Instance.new("TextButton")
-	btn.Name = name
-	btn.Size = UDim2.new(0, 155, 0, 46)
-	btn.Position = defaultPos
-	btn.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
-	btn.Text = text
-	btn.TextColor3 = Color3.fromRGB(210, 210, 210)
-	btn.TextSize = 15
-	btn.Font = Enum.Font.GothamBold
-	btn.ZIndex = 12
-	btn.Visible = false
-	btn.Parent = ScreenGui
-	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-
-	local s = Instance.new("UIStroke")
-	s.Color = Color3.fromRGB(180, 180, 180)
-	s.Thickness = 2
-	s.Parent = btn
-
-	do
-		local dragging, dragStart, startPos
-		btn.InputBegan:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-				dragging = true
-				dragStart = input.Position
-				startPos = btn.Position
-				input.Changed:Connect(function()
-					if input.UserInputState == Enum.UserInputState.End then dragging = false end
-				end)
-			end
-		end)
-		UserInputService.InputChanged:Connect(function(input)
-			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-				local delta = input.Position - dragStart
-				btn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-			end
-		end)
-	end
-
-	btn.MouseButton1Click:Connect(actionFunc)
-	ActionButtons[name] = btn
-	return btn
-end
-
-CreateActionScreenButton("PickUpGunBtn", "PICK UP GUN", UDim2.new(1, -175, 0, 16), PickUpGun)
-CreateActionScreenButton("ShotMurderBtn", "SHOT MURDER", UDim2.new(1, -175, 0, 70), ShotMurder)
-CreateActionScreenButton("KillMurderBtn", "KILL MURDER", UDim2.new(1, -175, 0, 124), KillMurder)
-
--- ====================== FLING ======================
-local SelectedTargets = {}
-local function SkidFling(target)
-	local char = LocalPlayer.Character
-	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	local root = hum and hum.RootPart
-	local tRoot = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
-	if not (root and tRoot) then return end
-
-	local old = root.CFrame
-	local start = tick()
-	local ang = 0
-	while Config.Fling.Active and tick() - start < 1.5 do
-		if not (root and tRoot) then break end
-		ang = ang + 110
-		root.CFrame = CFrame.new(tRoot.Position) * CFrame.new(0, 1.5, 0) * CFrame.Angles(math.rad(ang), 0, 0)
-		root.Velocity = Vector3.new(9e9, 9e9, 9e9)
-		root.RotVelocity = Vector3.new(9e9, 9e9, 9e9)
-		RunService.Heartbeat:Wait()
-	end
-	if old then root.CFrame = old end
-end
-
-local function StartFling()
-	if Config.Fling.Active then return end
-	Config.Fling.Active = true
-	task.spawn(function()
-		while Config.Fling.Active do
-			for _, plr in pairs(SelectedTargets) do
-				if Config.Fling.Active and plr and plr.Character then
-					SkidFling(plr)
-					task.wait(0.07)
-				end
-			end
-			task.wait(0.3)
-		end
-	end)
-end
-local function StopFling() Config.Fling.Active = false end
 
 -- ====================== COLOR PICKER ======================
 local ColorPane = Instance.new("Frame")
@@ -889,7 +712,202 @@ hook_input(Hue_Rail, function(x, y)
 	Config.Colors[current_key].color = Color3.fromHSV(y, s, v)
 end)
 
--- ====================== ВКЛАДКИ ======================
+-- ====================== COMBAT & EXPLOITS ======================
+local isFiring = false
+
+local function PickUpGun()
+	local gunDrop = workspace:FindFirstChild("GunDrop") or workspace:FindFirstChild("Gun")
+	if not gunDrop then return end
+	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+	local target = gunDrop:IsA("Model") and (gunDrop.PrimaryPart or gunDrop:FindFirstChildWhichIsA("BasePart")) or gunDrop
+	if target and target:IsA("BasePart") then
+		pcall(function()
+			firetouchinterest(hrp, target, 0)
+			task.wait()
+			firetouchinterest(hrp, target, 1)
+		end)
+	end
+end
+
+local function ShotMurder()
+	if isFiring then return end
+	local has, tool = HasGun()
+	if not has or not tool then return end
+	local remote = tool:FindFirstChild("KnifeServer") and tool.KnifeServer:FindFirstChild("SlashStart")
+	if not remote then return end
+	
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character then
+			if GetPlayerRole(player) == "Murder" then
+				local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+				local head = player.Character:FindFirstChild("Head")
+				if hrp then
+					isFiring = true
+					local targetPos = head and head.Position or hrp.Position
+					pcall(function() remote:FireServer(1, targetPos) end)
+					task.wait(0.1)
+					isFiring = false
+					break
+				end
+			end
+		end
+	end
+end
+
+local function KillMurder()
+	if isFiring then return end
+	local has, tool = HasGun()
+	if not has or not tool then return end
+	local remote = tool:FindFirstChild("KnifeServer") and tool.KnifeServer:FindFirstChild("SlashStart")
+	if not remote then return end
+	local myHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	if not myHRP then return end
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character then
+			if GetPlayerRole(player) == "Murder" then
+				local targetHRP = player.Character:FindFirstChild("HumanoidRootPart")
+				local head = player.Character:FindFirstChild("Head")
+				if targetHRP then
+					isFiring = true
+					myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 4.2)
+					task.wait(0.04)
+					local targetPos = head and head.Position or targetHRP.Position
+					pcall(function() remote:FireServer(1, targetPos) end)
+					task.wait(0.1)
+					isFiring = false
+					break
+				end
+			end
+		end
+	end
+end
+
+local function ThrowKnifeAtNearest()
+	local char = LocalPlayer.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	local knife = char and char:FindFirstChild("Knife")
+	if not hrp or not knife then return end
+
+	local remote = knife:FindFirstChild("KnifeServer") and knife.KnifeServer:FindFirstChild("FlingKnifeEvent")
+	local handle = knife:FindFirstChild("Handle")
+	if not remote or not handle then return end
+
+	local nearestDist = math.huge
+	local targetHRP = nil
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character then
+			local tHRP = player.Character:FindFirstChild("HumanoidRootPart")
+			local hum = player.Character:FindFirstChild("Humanoid")
+			if tHRP and hum and hum.Health > 0 then
+				local dist = (tHRP.Position - hrp.Position).Magnitude
+				if dist < nearestDist then
+					nearestDist = dist
+					targetHRP = tHRP
+				end
+			end
+		end
+	end
+
+	if targetHRP then
+		pcall(function()
+			remote:FireServer(CFrame.new(targetHRP.Position), handle.Position)
+		end)
+	end
+end
+
+local function SpamPlaceTrap()
+	if tick() - Config.Exploits.LastTrapPlaced < 2.5 then return end
+	Config.Exploits.LastTrapPlaced = tick()
+	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	local trapRemote = ReplicatedStorage:FindFirstChild("TrapSystem") and ReplicatedStorage.TrapSystem:FindFirstChild("PlaceTrap")
+	if trapRemote then
+		pcall(function()
+			trapRemote:FireServer(hrp.CFrame)
+		end)
+	end
+end
+
+-- ====================== КНОПКИ ДЕЙСТВИЙ ======================
+local ActionButtons = {}
+local function CreateActionScreenButton(name, text, defaultPos, actionFunc)
+	local btn = Instance.new("TextButton")
+	btn.Name = name
+	btn.Size = UDim2.new(0, 155, 0, 40)
+	btn.Position = defaultPos
+	btn.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+	btn.Text = text
+	btn.TextColor3 = Color3.fromRGB(210, 210, 210)
+	btn.TextSize = 14
+	btn.Font = Enum.Font.GothamBold
+	btn.ZIndex = 12
+	btn.Visible = false
+	btn.Parent = ScreenGui
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+
+	local s = Instance.new("UIStroke")
+	s.Color = Color3.fromRGB(180, 180, 180)
+	s.Thickness = 2
+	s.Parent = btn
+
+	MakeDraggable(btn)
+	btn.Activated:Connect(actionFunc)
+	ActionButtons[name] = btn
+	return btn
+end
+
+CreateActionScreenButton("PickUpGunBtn", "PICK UP GUN", UDim2.new(1, -175, 0, 10), PickUpGun)
+CreateActionScreenButton("ShotMurderBtn", "SHOT MURDER", UDim2.new(1, -175, 0, 56), ShotMurder)
+CreateActionScreenButton("KillMurderBtn", "KILL MURDER", UDim2.new(1, -175, 0, 102), KillMurder)
+CreateActionScreenButton("ThrowKnifeBtn", "THROW KNIFE", UDim2.new(1, -175, 0, 148), ThrowKnifeAtNearest)
+CreateActionScreenButton("PlaceTrapBtn", "SPAM TRAP", UDim2.new(1, -175, 0, 194), SpamPlaceTrap)
+
+-- ====================== FLING ======================
+local SelectedTargets = {}
+
+local function SkidFling(target)
+	local char = LocalPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local root = hum and hum.RootPart
+	local tRoot = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+	if not (root and tRoot) then return end
+
+	local old = root.CFrame
+	local start = tick()
+	local ang = 0
+	while Config.Fling.Active and tick() - start < 1.2 do
+		if not (root and tRoot) then break end
+		ang = ang + 110
+		root.CFrame = CFrame.new(tRoot.Position) * CFrame.new(0, 1.5, 0) * CFrame.Angles(math.rad(ang), 0, 0)
+		root.Velocity = Vector3.new(9e9, 9e9, 9e9)
+		root.RotVelocity = Vector3.new(9e9, 9e9, 9e9)
+		RunService.Heartbeat:Wait()
+	end
+	if old then root.CFrame = old end
+end
+
+local function StartFling()
+	if Config.Fling.Active then return end
+	Config.Fling.Active = true
+	task.spawn(function()
+		while Config.Fling.Active do
+			for _, plr in pairs(SelectedTargets) do
+				if Config.Fling.Active and plr and plr.Character then
+					SkidFling(plr)
+					task.wait(0.05)
+				end
+			end
+			task.wait(0.2)
+		end
+	end)
+end
+local function StopFling() Config.Fling.Active = false end
+
+-- ====================== ВКЛАДКИ МЕНЮ ======================
 local function BuildFlingTab()
 	local tab = Tabs.Fling
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
@@ -940,7 +958,6 @@ local function BuildFlingTab()
 	end
 
 	local startBtn = Instance.new("TextButton")
-	startBtn.Name = "Start Fling"
 	startBtn.Size = UDim2.new(0.46, 0, 0, 40)
 	startBtn.Position = UDim2.new(0, 10, 0, y + 10)
 	startBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
@@ -954,7 +971,6 @@ local function BuildFlingTab()
 	startBtn.MouseButton1Click:Connect(StartFling)
 
 	local stopBtn = Instance.new("TextButton")
-	stopBtn.Name = "Stop Fling"
 	stopBtn.Size = UDim2.new(0.46, 0, 0, 40)
 	stopBtn.Position = UDim2.new(0.52, 0, 0, y + 10)
 	stopBtn.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
@@ -990,7 +1006,6 @@ local function BuildEspTab()
 
 	for _, o in ipairs(opts) do
 		local btn = Instance.new("TextButton")
-		btn.Name = o.n
 		btn.Size = UDim2.new(1, -20, 0, 34)
 		btn.Position = UDim2.new(0, 10, 0, y)
 		btn.BackgroundColor3 = Config.ESP[o.k] and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
@@ -1083,7 +1098,6 @@ local function BuildCombatTab()
 
 	local function section(t)
 		local s = Instance.new("TextLabel")
-		s.Name = t
 		s.Size = UDim2.new(1, -20, 0, 22)
 		s.Position = UDim2.new(0, 10, 0, y)
 		s.BackgroundTransparency = 1
@@ -1099,7 +1113,6 @@ local function BuildCombatTab()
 
 	local function toggle(text, key)
 		local btn = Instance.new("TextButton")
-		btn.Name = text
 		btn.Size = UDim2.new(1, -20, 0, 34)
 		btn.Position = UDim2.new(0, 10, 0, y)
 		btn.BackgroundColor3 = Config.Combat[key] and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
@@ -1132,17 +1145,17 @@ local function BuildCombatTab()
 		y = y + 40
 	end
 
-	section("---Automatic activation")
+	section("---Automatic Combat")
 	toggle("Auto pick up gun", "AutoGun")
 	toggle("Auto shot murder", "AutoShot")
 	toggle("Auto kill murder", "AutoKill")
+	toggle("Auto throw knife", "AutoThrow")
 
 	y = y + 8
-	section("---Ui Button")
+	section("---Ui Action Buttons")
 
 	local function uiButtonToggle(text, btnKey)
 		local btn = Instance.new("TextButton")
-		btn.Name = text
 		btn.Size = UDim2.new(1, -20, 0, 34)
 		btn.Position = UDim2.new(0, 10, 0, y)
 		local targetScreenBtn = ActionButtons[btnKey]
@@ -1181,6 +1194,8 @@ local function BuildCombatTab()
 	uiButtonToggle("Pick up gun", "PickUpGunBtn")
 	uiButtonToggle("Shot murder", "ShotMurderBtn")
 	uiButtonToggle("Kill murder", "KillMurderBtn")
+	uiButtonToggle("Throw knife", "ThrowKnifeBtn")
+	uiButtonToggle("Spam trap", "PlaceTrapBtn")
 
 	tab.CanvasSize = UDim2.new(0, 0, 0, y + 20)
 end
@@ -1189,11 +1204,10 @@ BuildCombatTab()
 do
 	local tab = Tabs.Info
 	local lbl = Instance.new("TextLabel")
-	lbl.Name = "InfoText"
 	lbl.Size = UDim2.new(1, -30, 1, -30)
 	lbl.Position = UDim2.new(0, 15, 0, 15)
 	lbl.BackgroundTransparency = 1
-	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai\n\nVersion: 5.11\n\n- Исправлена механика выстрела\n- Добавлена стабильная синхронизация с RemoteEvent"
+	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.19\n\n- Исправлены ESP Box, Line и стабильность Name\n- Интегрирован мультитач-драггер"
 	lbl.TextColor3 = Color3.fromRGB(190, 190, 190)
 	lbl.TextSize = 15
 	lbl.Font = Enum.Font.GothamBold
@@ -1203,6 +1217,7 @@ do
 	lbl.Parent = tab
 end
 
+-- Главный цикл
 task.spawn(function()
 	while getgenv().MMV_AdminPanel_Running do
 		pcall(UpdateESP)
@@ -1216,10 +1231,13 @@ task.spawn(function()
 		if Config.Combat.AutoKill then
 			pcall(KillMurder)
 		end
+		if Config.Combat.AutoThrow then
+			pcall(ThrowKnifeAtNearest)
+		end
 
 		task.wait(0.12)
 	end
 	ClearAllESP()
 end)
 
-print("[MMV Admin Panel] v5.11 успешно загружена!")
+print("[MMV Admin Panel] v5.19 успешно загружена!")
