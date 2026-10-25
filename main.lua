@@ -1,7 +1,7 @@
 --приветик бро! Этот код без вирусов и полностью бесплатный! Пользуйся на здоровье<3
 --[[
 	MMV Admin Panel | Gemini Ai
-	Version 5.10 (Creator Store Assets Fix)
+	Version 5.11 (Fixed Combat & Shot Mechanics)
 ]]
 
 if getgenv().MMV_AdminPanel_Running then
@@ -145,7 +145,7 @@ task.spawn(function()
 			if status == Enum.AssetFetchStatus.Success then
 				print("[MMV Asset Loader] Успешно загружен ассет:", assetId)
 			elseif status == Enum.AssetFetchStatus.Failure then
-				warn("[MMV Asset Loader] Ошибка загрузки ассета (проверьте доступность):", assetId)
+				warn("[MMV Asset Loader] Ошибка загрузки ассета:", assetId)
 			end
 		end)
 	end)
@@ -346,6 +346,9 @@ local function HasGun()
 	return false, nil
 end
 
+-- Сделать функцию доступной глобально
+_G.GetPlayerRole = GetPlayerRole
+
 -- ====================== ESP ======================
 local Highlights = {}
 local Billboards = {}
@@ -534,7 +537,6 @@ local function UpdateESP()
 	end
 end
 
--- Player events
 local function SetupPlayerEvents(player)
 	player.CharacterRemoving:Connect(function() RemovePlayerESP(player) end)
 end
@@ -556,7 +558,7 @@ if HasDrawing then
 
 		for _, player in ipairs(Players:GetPlayers()) do
 			if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-				local role, color = GetPlayerRole(player)
+				local role, color = GetRoleColor(player)
 				local root = player.Character.HumanoidRootPart
 				local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
 
@@ -600,7 +602,9 @@ if HasDrawing then
 	end)
 end
 
--- ====================== COMBAT ======================
+-- ====================== COMBAT (ИСПРАВЛЕНО) ======================
+local isFiring = false
+
 local function PickUpGun()
 	local gunDrop = workspace:FindFirstChild("GunDrop") or workspace:FindFirstChild("Gun")
 	if not gunDrop then return end
@@ -617,17 +621,27 @@ local function PickUpGun()
 end
 
 local function ShotMurder()
+	if isFiring then return end
 	local has, tool = HasGun()
 	if not has or not tool then return end
 	local remote = tool:FindFirstChild("KnifeServer") and tool.KnifeServer:FindFirstChild("SlashStart")
 	if not remote then return end
+	
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player ~= LocalPlayer and player.Character then
-			local role = GetPlayerRole(player)
-			if role == "Murder" then
+			local role = GetRoleColor(player) -- Проверка роли
+			local actualRole = GetPlayerRole(player)
+			if actualRole == "Murder" then
 				local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+				local head = player.Character:FindFirstChild("Head")
 				if hrp then
-					pcall(function() remote:FireServer(1, hrp.Position) end)
+					isFiring = true
+					local targetPos = head and head.Position or hrp.Position
+					pcall(function() 
+						remote:FireServer(1, targetPos) 
+					end)
+					task.wait(0.1)
+					isFiring = false
 					break
 				end
 			end
@@ -636,6 +650,7 @@ local function ShotMurder()
 end
 
 local function KillMurder()
+	if isFiring then return end
 	local has, tool = HasGun()
 	if not has or not tool then return end
 	local remote = tool:FindFirstChild("KnifeServer") and tool.KnifeServer:FindFirstChild("SlashStart")
@@ -645,13 +660,20 @@ local function KillMurder()
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player ~= LocalPlayer and player.Character then
-			local role = GetPlayerRole(player)
-			if role == "Murder" then
+			local actualRole = GetPlayerRole(player)
+			if actualRole == "Murder" then
 				local targetHRP = player.Character:FindFirstChild("HumanoidRootPart")
+				local head = player.Character:FindFirstChild("Head")
 				if targetHRP then
+					isFiring = true
 					myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 4.2)
 					task.wait(0.04)
-					pcall(function() remote:FireServer(1, targetHRP.Position) end)
+					local targetPos = head and head.Position or targetHRP.Position
+					pcall(function() 
+						remote:FireServer(1, targetPos) 
+					end)
+					task.wait(0.1)
+					isFiring = false
 					break
 				end
 			end
@@ -1171,7 +1193,7 @@ do
 	lbl.Size = UDim2.new(1, -30, 1, -30)
 	lbl.Position = UDim2.new(0, 15, 0, 15)
 	lbl.BackgroundTransparency = 1
-	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai\n\nVersion: 5.10\n\n- Точные ID Creator Store (Diamond & Suitman)\n- Проверка статуса загрузки ассетов"
+	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai\n\nVersion: 5.11\n\n- Исправлена механика выстрела\n- Добавлена стабильная синхронизация с RemoteEvent"
 	lbl.TextColor3 = Color3.fromRGB(190, 190, 190)
 	lbl.TextSize = 15
 	lbl.Font = Enum.Font.GothamBold
@@ -1200,4 +1222,4 @@ task.spawn(function()
 	ClearAllESP()
 end)
 
-print("[MMV Admin Panel] v5.10 успешно загружена с Creator Store ассетами!")
+print("[MMV Admin Panel] v5.11 успешно загружена!")
