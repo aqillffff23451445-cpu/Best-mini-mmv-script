@@ -1,12 +1,16 @@
 --приветик бро! Этот код без вирусов и полностью бесплатный! Пользуйся на здоровье<3
 --[[
 	MMV Admin Panel | Gemini Ai & ChatGPT Integration
-	Version 5.19 (Full Script + Multi-Touch Dragging + Fixed ESP Box/Line/Name + Knife Visibility Fix)
+	Version 5.18.27 (Permanent Fix for Chams, Name & Role ESP)
 ]]
+
+local getgenv = getgenv or function() return _G end
+local currentSession = tick()
+getgenv().MMV_AdminPanel_Session = currentSession
 
 if getgenv().MMV_AdminPanel_Running then
 	getgenv().MMV_AdminPanel_Running = false
-	task.wait(0.4)
+	task.wait(0.1)
 end
 getgenv().MMV_AdminPanel_Running = true
 
@@ -17,11 +21,12 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
 local ContentProvider = game:GetService("ContentProvider")
+local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- ====================== КОНФИГ ======================
+-- ====================== КОНФИГ И СОХРАНЕНИЕ ======================
 local Config = {
 	ESP = {
 		Enabled = false,
@@ -45,6 +50,7 @@ local Config = {
 		AutoShot = false,
 		AutoKill = false,
 		AutoThrow = false,
+		Aimbot = false,
 	},
 	Fling = {
 		Active = false,
@@ -52,11 +58,66 @@ local Config = {
 	Exploits = {
 		StealthActive = false,
 		LastTrapPlaced = 0,
-	}
+	},
+	ButtonPositions = {},
 }
 
-local DrawingLib = Drawing or (getgenv and getgenv().Drawing)
-local HasDrawing = DrawingLib ~= nil
+local CONFIG_FILE = "MMV_AdminConfig_" .. tostring(LocalPlayer.UserId) .. ".json"
+
+local function SaveConfig()
+	pcall(function()
+		if writefile and HttpService then
+			local saveData = {
+				ESP = Config.ESP,
+				Combat = Config.Combat,
+				Colors = {},
+				ButtonPositions = Config.ButtonPositions
+			}
+			for k, v in pairs(Config.Colors) do
+				saveData.Colors[k] = {r = v.color.R, g = v.color.G, b = v.color.B, rainbow = v.rainbow}
+			end
+			writefile(CONFIG_FILE, HttpService:JSONEncode(saveData))
+		end
+	end)
+end
+
+local function LoadConfig()
+	pcall(function()
+		if readfile and isfile and isfile(CONFIG_FILE) and HttpService then
+			local decoded = HttpService:JSONDecode(readfile(CONFIG_FILE))
+			if decoded then
+				if decoded.ESP then
+					for k, v in pairs(decoded.ESP) do Config.ESP[k] = v end
+				end
+				if decoded.Combat then
+					for k, v in pairs(decoded.Combat) do Config.Combat[k] = v end
+				end
+				if decoded.Colors then
+					for k, v in pairs(decoded.Colors) do
+						if Config.Colors[k] then
+							Config.Colors[k].color = Color3.new(v.r, v.g, v.b)
+							Config.Colors[k].rainbow = v.rainbow
+						end
+					end
+				end
+				if decoded.ButtonPositions then
+					Config.ButtonPositions = decoded.ButtonPositions
+				end
+			end
+		end
+	end)
+end
+
+LoadConfig()
+
+local DrawingLib = nil
+local HasDrawing = false
+pcall(function()
+	DrawingLib = Drawing or (getgenv and getgenv().Drawing)
+	if DrawingLib and type(DrawingLib.new) == "function" then
+		HasDrawing = true
+	end
+end)
 
 -- ====================== GUI ======================
 local ScreenGui = Instance.new("ScreenGui")
@@ -64,73 +125,71 @@ ScreenGui.Name = "MMV_AdminPanel"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-pcall(function() ScreenGui.Parent = CoreGui end)
-if not ScreenGui.Parent then
-	ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+local guiSuccess = pcall(function()
+	ScreenGui.Parent = CoreGui
+end)
+if not guiSuccess or not ScreenGui.Parent then
+	pcall(function()
+		ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	end)
 end
 
--- Умное перетаскивание с поддержкой Multi-Touch (фикс джойстика)
-local function MakeDraggable(guiObject)
+local function MakeDraggable(guiObject, btnKey)
 	local dragging = false
 	local dragInput = nil
 	local dragStart = nil
 	local startPos = nil
 
-	guiObject.Active = true
+	if btnKey and Config.ButtonPositions[btnKey] then
+		local pos = Config.ButtonPositions[btnKey]
+		pcall(function()
+			guiObject.Position = UDim2.new(pos.XS, pos.XO, pos.YS, pos.YO)
+		end)
+	end
 
-	guiObject.InputBegan:Connect(function(input)
-		local isTouch = input.UserInputType == Enum.UserInputType.Touch
-		local isMouse = input.UserInputType == Enum.UserInputType.MouseButton1
+	pcall(function()
+		guiObject.Active = true
+		guiObject.InputBegan:Connect(function(input)
+			local isTouch = input.UserInputType == Enum.UserInputType.Touch
+			local isMouse = input.UserInputType == Enum.UserInputType.MouseButton1
+			if dragging or not (isTouch or isMouse) then return end
+			dragging = true
+			dragInput = isTouch and input or nil
+			dragStart = input.Position
+			startPos = guiObject.Position
+		end)
 
-		if dragging or not (isTouch or isMouse) then
-			return
-		end
+		UserInputService.InputChanged:Connect(function(input)
+			if not dragging then return end
+			local isOurTouch = dragInput ~= nil and input == dragInput
+			local isMouseMove = dragInput == nil and input.UserInputType == Enum.UserInputType.MouseMovement
+			if not isOurTouch and not isMouseMove then return end
+			local delta = input.Position - dragStart
+			guiObject.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end)
 
-		dragging = true
-		dragInput = isTouch and input or nil
-		dragStart = input.Position
-		startPos = guiObject.Position
-	end)
-
-	UserInputService.InputChanged:Connect(function(input)
-		if not dragging then
-			return
-		end
-
-		local isOurTouch = dragInput ~= nil and input == dragInput
-		local isMouseMove = dragInput == nil
-			and input.UserInputType == Enum.UserInputType.MouseMovement
-
-		if not isOurTouch and not isMouseMove then
-			return
-		end
-
-		local delta = input.Position - dragStart
-
-		guiObject.Position = UDim2.new(
-			startPos.X.Scale,
-			startPos.X.Offset + delta.X,
-			startPos.Y.Scale,
-			startPos.Y.Offset + delta.Y
-		)
-	end)
-
-	UserInputService.InputEnded:Connect(function(input)
-		local isOurTouch = dragInput ~= nil and input == dragInput
-		local isOurMouse = dragInput == nil
-			and input.UserInputType == Enum.UserInputType.MouseButton1
-
-		if dragging and (isOurTouch or isOurMouse) then
-			dragging = false
-			dragInput = nil
-			dragStart = nil
-			startPos = nil
-		end
+		UserInputService.InputEnded:Connect(function(input)
+			local isOurTouch = dragInput ~= nil and input == dragInput
+			local isOurMouse = dragInput == nil and input.UserInputType == Enum.UserInputType.MouseButton1
+			if dragging and (isOurTouch or isOurMouse) then
+				dragging = false
+				dragInput = nil
+				dragStart = nil
+				startPos = nil
+				if btnKey then
+					Config.ButtonPositions[btnKey] = {
+						XS = guiObject.Position.X.Scale, XO = guiObject.Position.X.Offset,
+						YS = guiObject.Position.Y.Scale, YO = guiObject.Position.Y.Offset
+					}
+					SaveConfig()
+				end
+			end
+		end)
 	end)
 end
 
 ----------------------------------------------------------------
--- 1. Diamond (Радужный ромб - Иконка открытия)
+-- 1. Diamond (Иконка открытия)
 ----------------------------------------------------------------
 local ToggleIcon = Instance.new("ImageButton")
 ToggleIcon.Name = "ToggleIcon"
@@ -148,7 +207,7 @@ local ts = Instance.new("UIStroke")
 ts.Color = Color3.fromRGB(0, 0, 0)
 ts.Thickness = 2
 ts.Parent = ToggleIcon
-MakeDraggable(ToggleIcon)
+MakeDraggable(ToggleIcon, "ToggleIcon")
 
 ----------------------------------------------------------------
 -- Главное окно
@@ -163,7 +222,7 @@ MainFrame.Active = true
 MainFrame.ZIndex = 2
 MainFrame.Parent = ScreenGui
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
-MakeDraggable(MainFrame)
+MakeDraggable(MainFrame, "MainFrame")
 
 local ms = Instance.new("UIStroke")
 ms.Color = Color3.fromRGB(0, 0, 0)
@@ -171,7 +230,7 @@ ms.Thickness = 4
 ms.Parent = MainFrame
 
 ----------------------------------------------------------------
--- 2. Suitman (Фоновое изображение)
+-- 2. Suitman (Фон)
 ----------------------------------------------------------------
 local BgImage = Instance.new("ImageLabel")
 BgImage.Name = "BgImage"
@@ -185,9 +244,7 @@ BgImage.ZIndex = 1
 BgImage.Parent = MainFrame
 
 task.spawn(function()
-	pcall(function()
-		ContentProvider:PreloadAsync({ToggleIcon, BgImage})
-	end)
+	pcall(function() ContentProvider:PreloadAsync({ToggleIcon, BgImage}) end)
 end)
 
 local menuVisible = true
@@ -322,10 +379,12 @@ end
 local function GetPlayerRole(player)
 	if tick() - LastRoleCheck > 1.2 then
 		LastRoleCheck = tick()
-		local ok, data = pcall(function()
-			return ReplicatedStorage.Remotes.Gameplay.GetCurrentPlayerData:InvokeServer()
+		pcall(function()
+			local ok, data = pcall(function()
+				return ReplicatedStorage.Remotes.Gameplay.GetCurrentPlayerData:InvokeServer()
+			end)
+			if ok and type(data) == "table" then RoleCache = data end
 		end)
-		if ok and type(data) == "table" then RoleCache = data end
 	end
 
 	if RoleCache[player.Name] then
@@ -340,8 +399,10 @@ local function GetPlayerRole(player)
 	for _, cont in ipairs({char, backpack}) do
 		if cont then
 			for _, item in ipairs(cont:GetChildren()) do
-				if item:FindFirstChild("IsKnife") or item.Name:lower():find("knife") then hasKnife = true end
-				if item:FindFirstChild("IsGun") or item.Name:lower():find("gun") then hasGun = true end
+				pcall(function()
+					if item:FindFirstChild("IsKnife") or item.Name:lower():find("knife") then hasKnife = true end
+					if item:FindFirstChild("IsGun") or item.Name:lower():find("gun") then hasGun = true end
+				end)
 			end
 		end
 	end
@@ -356,7 +417,8 @@ local function HasGun()
 	for _, cont in ipairs({char, backpack}) do
 		if cont then
 			for _, item in ipairs(cont:GetChildren()) do
-				if item:FindFirstChild("IsGun") or item.Name:lower():find("gun") then
+				local nameL = item.Name:lower()
+				if item:FindFirstChild("IsGun") or nameL:find("gun") or nameL:find("revolver") or nameL:find("sheriff") then
 					return true, item
 				end
 			end
@@ -367,7 +429,80 @@ end
 
 _G.GetPlayerRole = GetPlayerRole
 
--- ====================== ESP ======================
+-- ====================== ФУНКЦИЯ MORPH ======================
+local morphIndex = 1
+local function MorphAvatar()
+	pcall(function()
+		local mainGui = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("MainGUI")
+		if not mainGui then return end
+		
+		local lobby = mainGui:FindFirstChild("Lobby")
+		local screens = lobby and lobby:FindFirstChild("Screens")
+		local inventory = screens and screens:FindFirstChild("Inventory")
+		local main = inventory and inventory:FindFirstChild("Main")
+		local outfits = main and main:FindFirstChild("Outfits")
+		local items = outfits and outfits:FindFirstChild("Items")
+		local container = items and items:FindFirstChild("Container")
+		local current = container and container:FindFirstChild("Current")
+		local actualContainer = current and current:FindFirstChild("Container")
+
+		if not actualContainer then return end
+
+		local outfitsList = {}
+		for _, item in ipairs(actualContainer:GetChildren()) do
+			if item.Name == "NewItem" then
+				local label = item:FindFirstChild("ItemName") and item.ItemName:FindFirstChild("Label")
+				if label and label:IsA("TextLabel") and label.Text ~= "" then
+					table.insert(outfitsList, label.Text)
+				end
+			end
+		end
+
+		if #outfitsList == 0 then return end
+
+		if morphIndex > #outfitsList then
+			morphIndex = 1
+		end
+
+		local chosenOutfit = outfitsList[morphIndex]
+		morphIndex = morphIndex + 1
+
+		local args = { chosenOutfit }
+		local outfitEvents = ReplicatedStorage:FindFirstChild("OutfitEvents")
+		local setAvatarRemote = outfitEvents and outfitEvents:FindFirstChild("SetAvatarClient")
+		
+		if setAvatarRemote then
+			setAvatarRemote:FireServer(unpack(args))
+		end
+	end)
+end
+
+-- ====================== AIMBOT НА УБИЙЦУ ======================
+local function RunAimbot()
+	pcall(function()
+		if not Config.Combat.Aimbot then return end
+		local targetHRP = nil
+		for _, player in ipairs(Players:GetPlayers()) do
+			if player ~= LocalPlayer and player.Character then
+				local role, _ = GetPlayerRole(player)
+				if role == "Murder" then
+					local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+					local hum = player.Character:FindFirstChild("Humanoid")
+					if hrp and hum and hum.Health > 0 then
+						targetHRP = hrp
+						break
+					end
+				end
+			end
+		end
+
+		if targetHRP then
+			Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetHRP.Position)
+		end
+	end)
+end
+
+-- ====================== СТРОГО РАБОЧИЙ ESP (CHAMS, NAME, ROLE) ======================
 local Highlights = {}
 local Billboards = {}
 local Lines = {}
@@ -376,23 +511,29 @@ local ItemHighlights = {}
 local ItemBillboards = {}
 
 local function RemovePlayerESP(player)
-	if Highlights[player] then pcall(function() Highlights[player]:Destroy() end) Highlights[player] = nil end
-	if Billboards[player] then pcall(function() Billboards[player]:Destroy() end) Billboards[player] = nil end
-	if Lines[player] then pcall(function() Lines[player]:Remove() end) Lines[player] = nil end
-	if Boxes[player] then pcall(function() Boxes[player]:Remove() end) Boxes[player] = nil end
+	pcall(function()
+		if Highlights[player] then Highlights[player]:Destroy() Highlights[player] = nil end
+		if Billboards[player] then Billboards[player]:Destroy() Billboards[player] = nil end
+		if Lines[player] then Lines[player]:Remove() Lines[player] = nil end
+		if Boxes[player] then Boxes[player]:Remove() Boxes[player] = nil end
+	end)
 end
 
 local function ClearAllItemESP()
-	for obj, hl in pairs(ItemHighlights) do pcall(function() hl:Destroy() end) end
-	for obj, bb in pairs(ItemBillboards) do pcall(function() bb:Destroy() end) end
-	ItemHighlights, ItemBillboards = {}, {}
+	pcall(function()
+		for obj, hl in pairs(ItemHighlights) do hl:Destroy() end
+		for obj, bb in pairs(ItemBillboards) do bb:Destroy() end
+		ItemHighlights, ItemBillboards = {}, {}
+	end)
 end
 
 local function ClearAllESP()
-	for player, _ in pairs(Highlights) do RemovePlayerESP(player) end
-	for player, _ in pairs(Lines) do if Lines[player] then pcall(function() Lines[player]:Remove() end) Lines[player] = nil end end
-	for player, _ in pairs(Boxes) do if Boxes[player] then pcall(function() Boxes[player]:Remove() end) Boxes[player] = nil end end
-	ClearAllItemESP()
+	pcall(function()
+		for player, _ in pairs(Highlights) do RemovePlayerESP(player) end
+		for player, _ in pairs(Lines) do if Lines[player] then pcall(function() Lines[player]:Remove() end) Lines[player] = nil end end
+		for player, _ in pairs(Boxes) do if Boxes[player] then pcall(function() Boxes[player]:Remove() end) Boxes[player] = nil end end
+		ClearAllItemESP()
+	end)
 end
 
 local function UpdateESP()
@@ -402,84 +543,100 @@ local function UpdateESP()
 	end
 
 	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer and player.Character then
-			local char = player.Character
-			local root = char:FindFirstChild("HumanoidRootPart")
-			local head = char:FindFirstChild("Head")
-			local hum = char:FindFirstChildOfClass("Humanoid")
+		pcall(function()
+			if player ~= LocalPlayer and player.Character then
+				local char = player.Character
+				local root = char:FindFirstChild("HumanoidRootPart")
+				local head = char:FindFirstChild("Head")
+				local hum = char:FindFirstChildOfClass("Humanoid")
 
-			if root and head and hum and hum.Health > 0 then
-				local role, color = GetRoleColor(player)
+				if root and head and hum and hum.Health > 0 then
+					local roleName, color = GetPlayerRole(player)
 
-				if Config.ESP.Chams then
-					local hl = Highlights[player]
-					if not hl or not hl.Parent or hl.Parent ~= char then
-						if hl then pcall(function() hl:Destroy() end) end
-						hl = Instance.new("Highlight")
-						hl.FillTransparency = 0.55
-						hl.OutlineTransparency = 0.2
-						hl.Parent = char
-						Highlights[player] = hl
+					-- 1. CHAMS ESP
+					if Config.ESP.Chams then
+						local hl = Highlights[player]
+						if not hl or not hl.Parent or hl.Parent ~= char then
+							if hl then pcall(function() hl:Destroy() end) end
+							hl = Instance.new("Highlight")
+							hl.FillTransparency = 0.55
+							hl.OutlineTransparency = 1
+							hl.Parent = char
+							Highlights[player] = hl
+						end
+						hl.Adornee = char
+						hl.FillColor = color
+						hl.Enabled = true
+					elseif Highlights[player] then
+						Highlights[player].Enabled = false
 					end
-					hl.Adornee = char
-					hl.FillColor = color
-					hl.OutlineColor = color
-					hl.Enabled = true
-				elseif Highlights[player] then
-					Highlights[player].Enabled = false
-				end
 
-				if Config.ESP.Name or Config.ESP.Role then
-					local bb = Billboards[player]
-					if not bb or not bb.Parent or bb.Parent ~= char then
-						if bb then pcall(function() bb:Destroy() end) end
-						bb = Instance.new("BillboardGui")
-						bb.Name = "MMV_ESP_Name"
-						bb.Size = UDim2.new(0, 150, 0, 42)
-						bb.StudsOffset = Vector3.new(0, 2.9, 0)
-						bb.AlwaysOnTop = true
-						bb.Adornee = head
-						local lbl = Instance.new("TextLabel")
-						lbl.Name = "Label"
-						lbl.Size = UDim2.new(1, 0, 1, 0)
-						lbl.BackgroundTransparency = 1
-						lbl.TextSize = 14
-						lbl.Font = Enum.Font.GothamBold
-						lbl.TextStrokeTransparency = 0.25
-						lbl.Parent = bb
-						bb.Parent = char
-						Billboards[player] = bb
+					-- 2. NAME ESP & ROLE ESP
+					if Config.ESP.Name or Config.ESP.Role then
+						local bb = Billboards[player]
+						if not bb or not bb.Parent or bb.Parent ~= char then
+							if bb then pcall(function() bb:Destroy() end) end
+							bb = Instance.new("BillboardGui")
+							bb.Name = "MMV_ESP_Billboard"
+							bb.Size = UDim2.new(0, 150, 0, 42)
+							bb.StudsOffset = Vector3.new(0, 2.9, 0)
+							bb.AlwaysOnTop = true
+							bb.Adornee = head
+							
+							local lbl = Instance.new("TextLabel")
+							lbl.Name = "Label"
+							lbl.Size = UDim2.new(1, 0, 1, 0)
+							lbl.BackgroundTransparency = 1
+							lbl.TextSize = 14
+							lbl.Font = Enum.Font.GothamBold
+							lbl.TextStrokeTransparency = 0.25
+							lbl.Parent = bb
+							
+							bb.Parent = char
+							Billboards[player] = bb
+						end
+
+						local text = ""
+						if Config.ESP.Name and Config.ESP.Role then
+							text = player.Name .. "\n" .. roleName
+						elseif Config.ESP.Name then
+							text = player.Name
+						elseif Config.ESP.Role then
+							text = roleName
+						end
+
+						bb.Enabled = true
+						local lbl = bb:FindFirstChild("Label")
+						if lbl then
+							lbl.Text = text
+							lbl.TextColor3 = color
+						end
+					elseif Billboards[player] then
+						Billboards[player].Enabled = false
 					end
-					local text = ""
-					if Config.ESP.Name then text = player.Name end
-					if Config.ESP.Role then text = text .. (text ~= "" and "\n" or "") .. role end
-					bb.Enabled = true
-					local lbl = bb:FindFirstChild("Label")
-					if lbl then
-						lbl.Text = text
-						lbl.TextColor3 = color
-					end
-				elseif Billboards[player] then
-					Billboards[player].Enabled = false
+				else
+					RemovePlayerESP(player)
 				end
 			else
 				RemovePlayerESP(player)
 			end
-		else
-			RemovePlayerESP(player)
-		end
+		end)
 	end
 
 	local validObjects = {}
-	for _, obj in ipairs(workspace:GetChildren()) do
+	if Config.ESP.Gun or Config.ESP.Trap then
 		pcall(function()
-			local nameLower = obj.Name:lower()
-			if not nameLower:find("strap") then
-				if Config.ESP.Gun and (nameLower == "gundrop" or nameLower == "gun") then
-					validObjects[obj] = {text = "GUN DROP", color = GetRoleColor("Gun")}
-				elseif Config.ESP.Trap and (nameLower == "trap" or nameLower:find("trap")) then
-					validObjects[obj] = {text = "TRAP", color = GetRoleColor("Trap")}
-				end
+			for _, obj in ipairs(workspace:GetChildren()) do
+				pcall(function()
+					local nameLower = obj.Name:lower()
+					if not nameLower:find("strap") then
+						if Config.ESP.Gun and (nameLower == "gundrop" or nameLower == "gun") then
+							validObjects[obj] = {text = "GUN DROP", color = GetRoleColor("Gun")}
+						elseif Config.ESP.Trap and (nameLower == "trap" or nameLower:find("trap")) then
+							validObjects[obj] = {text = "TRAP", color = GetRoleColor("Trap")}
+						end
+					end
+				end)
 			end
 		end)
 	end
@@ -490,12 +647,11 @@ local function UpdateESP()
 			if not hl or not hl.Parent then
 				hl = Instance.new("Highlight")
 				hl.FillTransparency = 0.3
-				hl.OutlineTransparency = 0.1
+				hl.OutlineTransparency = 1
 				hl.Parent = obj
 				ItemHighlights[obj] = hl
 			end
 			hl.FillColor = info.color
-			hl.OutlineColor = info.color
 			hl.Enabled = true
 
 			local bb = ItemBillboards[obj]
@@ -506,91 +662,112 @@ local function UpdateESP()
 				bb.AlwaysOnTop = true
 				bb.Adornee = obj
 				local lbl = Instance.new("TextLabel")
+				lbl.Name = "Label"
 				lbl.Size = UDim2.new(1, 0, 1, 0)
 				lbl.BackgroundTransparency = 1
 				lbl.Text = info.text
 				lbl.TextSize = 13
 				lbl.Font = Enum.Font.GothamBold
 				lbl.TextStrokeTransparency = 0.2
+				lbl.TextColor3 = info.color
 				lbl.Parent = bb
 				bb.Parent = obj
 				ItemBillboards[obj] = bb
 			end
 			bb.Enabled = true
+			local lbl = bb:FindFirstChild("Label")
+			if lbl then
+				lbl.TextColor3 = info.color
+			end
 		end)
 	end
 
 	for obj, hl in pairs(ItemHighlights) do
-		if not validObjects[obj] then pcall(function() hl:Destroy() end) ItemHighlights[obj] = nil end
+		if not validObjects[obj] or not obj.Parent then 
+			pcall(function() 
+				hl:Destroy() 
+				if ItemBillboards[obj] then ItemBillboards[obj]:Destroy() ItemBillboards[obj] = nil end
+			end) 
+			ItemHighlights[obj] = nil 
+		end
 	end
 end
 
 Players.PlayerAdded:Connect(function(p)
 	p.CharacterAdded:Connect(function() RemovePlayerESP(p) end)
+	p.CharacterRemoving:Connect(function() RemovePlayerESP(p) end)
 end)
 Players.PlayerRemoving:Connect(RemovePlayerESP)
 
 if HasDrawing then
-	RunService.RenderStepped:Connect(function()
-		if not getgenv().MMV_AdminPanel_Running or not Config.ESP.Enabled then
-			for player, _ in pairs(Lines) do if Lines[player] then Lines[player].Visible = false end end
-			for player, _ in pairs(Boxes) do if Boxes[player] then Boxes[player].Visible = false end end
-			return
-		end
+	pcall(function()
+		RunService.RenderStepped:Connect(function()
+			if getgenv().MMV_AdminPanel_Session ~= currentSession or not getgenv().MMV_AdminPanel_Running or not Config.ESP.Enabled then
+				for player, _ in pairs(Lines) do if Lines[player] then Lines[player].Visible = false end end
+				for player, _ in pairs(Boxes) do if Boxes[player] then Boxes[player].Visible = false end end
+				return
+			end
 
-		local screenBottom = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y - 8)
+			local screenBottom = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y - 8)
 
-		for _, player in ipairs(Players:GetPlayers()) do
-			if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-				local char = player.Character
-				local root = char.HumanoidRootPart
-				local hum = char:FindFirstChildOfClass("Humanoid")
+			for _, player in ipairs(Players:GetPlayers()) do
+				pcall(function()
+					if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+						local char = player.Character
+						local root = char.HumanoidRootPart
+						local hum = char:FindFirstChildOfClass("Humanoid")
 
-				if hum and hum.Health > 0 then
-					local role, color = GetRoleColor(player)
-					local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
+						if hum and hum.Health > 0 then
+							local _, color = GetPlayerRole(player)
+							local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
 
-					if onScreen and pos.Z > 0 then
-						if Config.ESP.Line then
-							local line = Lines[player]
-							if not line then
-								line = DrawingLib.new("Line")
-								line.Thickness = 2
-								Lines[player] = line
+							if onScreen and pos.Z > 0 then
+								if Config.ESP.Line then
+									local line = Lines[player]
+									if not line then
+										line = DrawingLib.new("Line")
+										line.Thickness = 2
+										Lines[player] = line
+									end
+									line.From = screenBottom
+									line.To = Vector2.new(pos.X, pos.Y)
+									line.Color = color
+									line.Visible = true
+								elseif Lines[player] then
+									Lines[player].Visible = false
+								end
+
+								if Config.ESP.Box then
+									local box = Boxes[player]
+									if not box then
+										box = DrawingLib.new("Square")
+										box.Thickness = 2
+										box.Filled = false
+										Boxes[player] = box
+									end
+									local scale = math.clamp(70 / (pos.Z * 0.09), 28, 95)
+									box.Size = Vector2.new(scale * 0.72, scale)
+									box.Position = Vector2.new(pos.X - scale * 0.36, pos.Y - scale * 0.5)
+									box.Color = color
+									box.Visible = true
+								elseif Boxes[player] then
+									Boxes[player].Visible = false
+								end
+							else
+								if Lines[player] then Lines[player].Visible = false end
+								if Boxes[player] then Boxes[player].Visible = false end
 							end
-							line.From = screenBottom
-							line.To = Vector2.new(pos.X, pos.Y)
-							line.Color = color
-							line.Visible = true
-						elseif Lines[player] then Lines[player].Visible = false end
-
-						if Config.ESP.Box then
-							local box = Boxes[player]
-							if not box then
-								box = DrawingLib.new("Square")
-								box.Thickness = 2
-								box.Filled = false
-								Boxes[player] = box
-							end
-							local scale = math.clamp(70 / (pos.Z * 0.09), 28, 95)
-							box.Size = Vector2.new(scale * 0.72, scale)
-							box.Position = Vector2.new(pos.X - scale * 0.36, pos.Y - scale * 0.5)
-							box.Color = color
-							box.Visible = true
-						elseif Boxes[player] then Boxes[player].Visible = false end
+						else
+							if Lines[player] then Lines[player].Visible = false end
+							if Boxes[player] then Boxes[player].Visible = false end
+						end
 					else
 						if Lines[player] then Lines[player].Visible = false end
 						if Boxes[player] then Boxes[player].Visible = false end
 					end
-				else
-					if Lines[player] then Lines[player].Visible = false end
-					if Boxes[player] then Boxes[player].Visible = false end
-				end
-			else
-				if Lines[player] then Lines[player].Visible = false end
-				if Boxes[player] then Boxes[player].Visible = false end
+				end)
 			end
-		end
+		end)
 	end)
 end
 
@@ -678,6 +855,7 @@ RainbowToggle.MouseButton1Click:Connect(function()
 	if current_key then
 		Config.Colors[current_key].rainbow = not Config.Colors[current_key].rainbow
 		update_pkr()
+		SaveConfig()
 	end
 end)
 
@@ -692,6 +870,7 @@ local function hook_input(frame, callback)
 				local relY = math.clamp((mouse.Y - inset.Y - frame.AbsolutePosition.Y) / frame.AbsoluteSize.Y, 0, 1)
 				callback(relX, relY)
 				update_pkr()
+				SaveConfig()
 				if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) and not UserInputService:IsMouseButtonPressed(Enum.UserInputType.Touch) then
 					conn:Disconnect()
 				end
@@ -716,123 +895,137 @@ end)
 local isFiring = false
 
 local function PickUpGun()
-	local gunDrop = workspace:FindFirstChild("GunDrop") or workspace:FindFirstChild("Gun")
-	if not gunDrop then return end
-	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
-	local target = gunDrop:IsA("Model") and (gunDrop.PrimaryPart or gunDrop:FindFirstChildWhichIsA("BasePart")) or gunDrop
-	if target and target:IsA("BasePart") then
-		pcall(function()
+	pcall(function()
+		local gunDrop = workspace:FindFirstChild("GunDrop") or workspace:FindFirstChild("Gun")
+		if not gunDrop then return end
+		local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+		if not hrp then return end
+		local target = gunDrop:IsA("Model") and (gunDrop.PrimaryPart or gunDrop:FindFirstChildWhichIsA("BasePart")) or gunDrop
+		if target and target:IsA("BasePart") then
 			firetouchinterest(hrp, target, 0)
 			task.wait()
 			firetouchinterest(hrp, target, 1)
-		end)
-	end
+		end
+	end)
 end
 
 local function ShotMurder()
 	if isFiring then return end
-	local has, tool = HasGun()
-	if not has or not tool then return end
-	local remote = tool:FindFirstChild("KnifeServer") and tool.KnifeServer:FindFirstChild("SlashStart")
-	if not remote then return end
-	
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer and player.Character then
-			if GetPlayerRole(player) == "Murder" then
-				local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-				local head = player.Character:FindFirstChild("Head")
-				if hrp then
-					isFiring = true
-					local targetPos = head and head.Position or hrp.Position
-					pcall(function() remote:FireServer(1, targetPos) end)
-					task.wait(0.1)
-					isFiring = false
+	pcall(function()
+		local has, tool = HasGun()
+		if not has or not tool then return end
+		local remote = tool:FindFirstChild("KnifeServer") and tool.KnifeServer:FindFirstChild("SlashStart")
+		if not remote then
+			for _, child in ipairs(tool:GetDescendants()) do
+				if child:IsA("RemoteEvent") and (child.Name:lower():find("slash") or child.Name:lower():find("shoot") or child.Name:lower():find("gun")) then
+					remote = child
 					break
 				end
 			end
 		end
-	end
+		if not remote then return end
+		
+		for _, player in ipairs(Players:GetPlayers()) do
+			if player ~= LocalPlayer and player.Character then
+				local roleName, _ = GetPlayerRole(player)
+				if roleName == "Murder" then
+					local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+					local head = player.Character:FindFirstChild("Head")
+					if hrp then
+						isFiring = true
+						local targetPos = head and head.Position or hrp.Position
+						remote:FireServer(1, targetPos)
+						task.wait(0.1)
+						isFiring = false
+						break
+					end
+				end
+			end
+		end
+	end)
 end
 
 local function KillMurder()
 	if isFiring then return end
-	local has, tool = HasGun()
-	if not has or not tool then return end
-	local remote = tool:FindFirstChild("KnifeServer") and tool.KnifeServer:FindFirstChild("SlashStart")
-	if not remote then return end
-	local myHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-	if not myHRP then return end
+	pcall(function()
+		local has, tool = HasGun()
+		if not has or not tool then return end
+		local remote = tool:FindFirstChild("KnifeServer") and tool.KnifeServer:FindFirstChild("SlashStart")
+		if not remote then return end
+		local myHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+		if not myHRP then return end
 
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer and player.Character then
-			if GetPlayerRole(player) == "Murder" then
-				local targetHRP = player.Character:FindFirstChild("HumanoidRootPart")
-				local head = player.Character:FindFirstChild("Head")
-				if targetHRP then
-					isFiring = true
-					myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 4.2)
-					task.wait(0.04)
-					local targetPos = head and head.Position or targetHRP.Position
-					pcall(function() remote:FireServer(1, targetPos) end)
-					task.wait(0.1)
-					isFiring = false
-					break
+		for _, player in ipairs(Players:GetPlayers()) do
+			if player ~= LocalPlayer and player.Character then
+				local roleName, _ = GetPlayerRole(player)
+				if roleName == "Murder" then
+					local targetHRP = player.Character:FindFirstChild("HumanoidRootPart")
+					local head = player.Character:FindFirstChild("Head")
+					if targetHRP then
+						isFiring = true
+						myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 4.2)
+						task.wait(0.04)
+						local targetPos = head and head.Position or targetHRP.Position
+						remote:FireServer(1, targetPos)
+						task.wait(0.1)
+						isFiring = false
+						break
+					end
 				end
 			end
 		end
-	end
+	end)
 end
 
 local function ThrowKnifeAtNearest()
-	local char = LocalPlayer.Character
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	local knife = char and char:FindFirstChild("Knife")
-	if not hrp or not knife then return end
+	pcall(function()
+		local char = LocalPlayer.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		local knife = char and char:FindFirstChild("Knife")
+		if not hrp or not knife then return end
 
-	local remote = knife:FindFirstChild("KnifeServer") and knife.KnifeServer:FindFirstChild("FlingKnifeEvent")
-	local handle = knife:FindFirstChild("Handle")
-	if not remote or not handle then return end
+		local remote = knife:FindFirstChild("KnifeServer") and knife.KnifeServer:FindFirstChild("FlingKnifeEvent")
+		local handle = knife:FindFirstChild("Handle")
+		if not remote or not handle then return end
 
-	local nearestDist = math.huge
-	local targetHRP = nil
+		local nearestDist = math.huge
+		local targetHRP = nil
 
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer and player.Character then
-			local tHRP = player.Character:FindFirstChild("HumanoidRootPart")
-			local hum = player.Character:FindFirstChild("Humanoid")
-			if tHRP and hum and hum.Health > 0 then
-				local dist = (tHRP.Position - hrp.Position).Magnitude
-				if dist < nearestDist then
-					nearestDist = dist
-					targetHRP = tHRP
+		for _, player in ipairs(Players:GetPlayers()) do
+			if player ~= LocalPlayer and player.Character then
+				local tHRP = player.Character:FindFirstChild("HumanoidRootPart")
+				local hum = player.Character:FindFirstChild("Humanoid")
+				if tHRP and hum and hum.Health > 0 then
+					local dist = (tHRP.Position - hrp.Position).Magnitude
+					if dist < nearestDist then
+						nearestDist = dist
+						targetHRP = tHRP
+					end
 				end
 			end
 		end
-	end
 
-	if targetHRP then
-		pcall(function()
+		if targetHRP then
 			remote:FireServer(CFrame.new(targetHRP.Position), handle.Position)
-		end)
-	end
+		end
+	end)
 end
 
 local function SpamPlaceTrap()
 	if tick() - Config.Exploits.LastTrapPlaced < 2.5 then return end
 	Config.Exploits.LastTrapPlaced = tick()
-	local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
+	pcall(function()
+		local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+		if not hrp then return end
 
-	local trapRemote = ReplicatedStorage:FindFirstChild("TrapSystem") and ReplicatedStorage.TrapSystem:FindFirstChild("PlaceTrap")
-	if trapRemote then
-		pcall(function()
+		local trapRemote = ReplicatedStorage:FindFirstChild("TrapSystem") and ReplicatedStorage.TrapSystem:FindFirstChild("PlaceTrap")
+		if trapRemote then
 			trapRemote:FireServer(hrp.CFrame)
-		end)
-	end
+		end
+	end)
 end
 
--- ====================== КНОПКИ ДЕЙСТВИЙ ======================
+-- ====================== КНОПКИ ДЕЙСТВИЙ НА ЭКРАНЕ ======================
 local ActionButtons = {}
 local function CreateActionScreenButton(name, text, defaultPos, actionFunc)
 	local btn = Instance.new("TextButton")
@@ -854,7 +1047,7 @@ local function CreateActionScreenButton(name, text, defaultPos, actionFunc)
 	s.Thickness = 2
 	s.Parent = btn
 
-	MakeDraggable(btn)
+	MakeDraggable(btn, name)
 	btn.Activated:Connect(actionFunc)
 	ActionButtons[name] = btn
 	return btn
@@ -865,54 +1058,109 @@ CreateActionScreenButton("ShotMurderBtn", "SHOT MURDER", UDim2.new(1, -175, 0, 5
 CreateActionScreenButton("KillMurderBtn", "KILL MURDER", UDim2.new(1, -175, 0, 102), KillMurder)
 CreateActionScreenButton("ThrowKnifeBtn", "THROW KNIFE", UDim2.new(1, -175, 0, 148), ThrowKnifeAtNearest)
 CreateActionScreenButton("PlaceTrapBtn", "SPAM TRAP", UDim2.new(1, -175, 0, 194), SpamPlaceTrap)
+CreateActionScreenButton("MorphBtn", "MORPH OUTFIT", UDim2.new(1, -175, 0, 240), MorphAvatar)
+CreateActionScreenButton("AimbotBtn", "AIMBOT MURDER", UDim2.new(1, -175, 0, 286), function()
+	Config.Combat.Aimbot = not Config.Combat.Aimbot
+	SaveConfig()
+end)
 
--- ====================== FLING ======================
+-- ====================== FLING (С ЗАЩИТОЙ ОТ ПРОВАЛИВАНИЯ) ======================
 local SelectedTargets = {}
-
-local function SkidFling(target)
-	local char = LocalPlayer.Character
-	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	local root = hum and hum.RootPart
-	local tRoot = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
-	if not (root and tRoot) then return end
-
-	local old = root.CFrame
-	local start = tick()
-	local ang = 0
-	while Config.Fling.Active and tick() - start < 1.2 do
-		if not (root and tRoot) then break end
-		ang = ang + 110
-		root.CFrame = CFrame.new(tRoot.Position) * CFrame.new(0, 1.5, 0) * CFrame.Angles(math.rad(ang), 0, 0)
-		root.Velocity = Vector3.new(9e9, 9e9, 9e9)
-		root.RotVelocity = Vector3.new(9e9, 9e9, 9e9)
-		RunService.Heartbeat:Wait()
-	end
-	if old then root.CFrame = old end
-end
 
 local function StartFling()
 	if Config.Fling.Active then return end
+	
+	local targetPlayer = nil
+	for _, plr in pairs(SelectedTargets) do
+		if plr and plr.Character then
+			targetPlayer = plr
+			break
+		end
+	end
+	
+	if not targetPlayer then return end
+
+	local char = LocalPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local root = hum and hum.RootPart
+	if not root then return end
+
 	Config.Fling.Active = true
-	task.spawn(function()
-		while Config.Fling.Active do
-			for _, plr in pairs(SelectedTargets) do
-				if Config.Fling.Active and plr and plr.Character then
-					SkidFling(plr)
-					task.wait(0.05)
+	local originalPosition = root.CFrame
+	workspace.Gravity = 0
+
+	local noclipConn = RunService.Stepped:Connect(function()
+		pcall(function()
+			if Config.Fling.Active and LocalPlayer.Character then
+				for _, part in pairs(LocalPlayer.Character:GetChildren()) do
+					if part:IsA("BasePart") then
+						part.CanCollide = false
+					end
 				end
 			end
-			task.wait(0.2)
+		end)
+	end)
+
+	task.spawn(function()
+		local startTime = tick()
+		while Config.Fling.Active and getgenv().MMV_AdminPanel_Session == currentSession do
+			RunService.Heartbeat:Wait()
+			
+			local currentTargetChar = targetPlayer.Character
+			local tRoot = currentTargetChar and currentTargetChar:FindFirstChild("HumanoidRootPart")
+			local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+
+			if not tRoot or not myRoot or not Config.Fling.Active then 
+				break 
+			end
+
+			myRoot.CFrame = tRoot.CFrame
+
+			local oldVel = myRoot.Velocity
+			myRoot.Velocity = oldVel * 10000 + Vector3.new(0, 10000, 0)
+			RunService.RenderStepped:Wait()
+			myRoot.Velocity = oldVel
+
+			if tick() - startTime > 1.2 then
+				break
+			end
+		end
+
+		Config.Fling.Active = false
+		if noclipConn then noclipConn:Disconnect() end
+
+		pcall(function()
+			local currentLocalChar = LocalPlayer.Character
+			local finalRoot = currentLocalChar and currentLocalChar:FindFirstChild("HumanoidRootPart")
+			if finalRoot then
+				finalRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+				finalRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+				
+				for _, part in pairs(currentLocalChar:GetChildren()) do
+					if part:IsA("BasePart") then
+						part.CanCollide = true
+					end
+				end
+
+				finalRoot.CFrame = originalPosition + Vector3.new(0, 3.5, 0)
+				finalRoot.Anchored = true
+				task.wait(0.15)
+				finalRoot.Anchored = false
+			end
+		end)
+
+		task.wait(2.0)
+		if getgenv().MMV_AdminPanel_Session == currentSession then
+			workspace.Gravity = 196.2
 		end
 	end)
 end
-local function StopFling() Config.Fling.Active = false end
 
 -- ====================== ВКЛАДКИ МЕНЮ ======================
 local function BuildFlingTab()
 	local tab = Tabs.Fling
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
 	local y = 12
-	SelectedTargets = {}
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player ~= LocalPlayer then
@@ -920,7 +1168,7 @@ local function BuildFlingTab()
 			btn.Name = player.Name
 			btn.Size = UDim2.new(1, -20, 0, 34)
 			btn.Position = UDim2.new(0, 10, 0, y)
-			btn.BackgroundColor3 = Color3.fromRGB(52, 52, 52)
+			btn.BackgroundColor3 = SelectedTargets[player] and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
 			btn.Text = "  " .. player.Name
 			btn.TextColor3 = Color3.new(1, 1, 1)
 			btn.TextSize = 15
@@ -934,7 +1182,7 @@ local function BuildFlingTab()
 			sel.Size = UDim2.new(0, 90, 1, 0)
 			sel.Position = UDim2.new(1, -95, 0, 0)
 			sel.BackgroundTransparency = 1
-			sel.Text = ""
+			sel.Text = SelectedTargets[player] and "SELECT" or ""
 			sel.TextColor3 = Color3.fromRGB(0, 255, 120)
 			sel.TextSize = 14
 			sel.Font = Enum.Font.GothamBold
@@ -944,14 +1192,11 @@ local function BuildFlingTab()
 
 			btn.MouseButton1Click:Connect(function()
 				if SelectedTargets[player] then
-					SelectedTargets[player] = nil
-					sel.Text = ""
-					btn.BackgroundColor3 = Color3.fromRGB(52, 52, 52)
+					SelectedTargets = {}
 				else
-					SelectedTargets[player] = player
-					sel.Text = "SELECT"
-					btn.BackgroundColor3 = Color3.fromRGB(30, 70, 45)
+					SelectedTargets = {[player] = player}
 				end
+				BuildFlingTab()
 			end)
 			y = y + 40
 		end
@@ -981,7 +1226,15 @@ local function BuildFlingTab()
 	stopBtn.ZIndex = 4
 	stopBtn.Parent = tab
 	Instance.new("UICorner", stopBtn).CornerRadius = UDim.new(0, 6)
-	stopBtn.MouseButton1Click:Connect(StopFling)
+	stopBtn.MouseButton1Click:Connect(function()
+		Config.Fling.Active = false
+		local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+		if root then
+			root.Velocity = Vector3.new(0, 0, 0)
+			root.Anchored = false
+		end
+		workspace.Gravity = 196.2
+	end)
 
 	tab.CanvasSize = UDim2.new(0, 0, 0, y + 70)
 end
@@ -1035,6 +1288,7 @@ local function BuildEspTab()
 			sel.Text = Config.ESP[o.k] and "SELECT" or ""
 			btn.BackgroundColor3 = Config.ESP[o.k] and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
 			Config.ESP.Enabled = Config.ESP.Chams or Config.ESP.Name or Config.ESP.Role or Config.ESP.Line or Config.ESP.Box or Config.ESP.Gun or Config.ESP.Trap
+			SaveConfig()
 		end)
 		y = y + 40
 	end
@@ -1077,11 +1331,13 @@ local function BuildEspTab()
 		end)
 
 		RunService.RenderStepped:Connect(function()
-			if Config.Colors[r].rainbow then
-				circle.BackgroundColor3 = Color3.fromHSV(tick() % 5 / 5, 1, 1)
-			else
-				circle.BackgroundColor3 = Config.Colors[r].color
-			end
+			pcall(function()
+				if Config.Colors[r].rainbow then
+					circle.BackgroundColor3 = Color3.fromHSV(tick() % 5 / 5, 1, 1)
+				else
+					circle.BackgroundColor3 = Config.Colors[r].color
+				end
+			end)
 		end)
 
 		y = y + 36
@@ -1141,6 +1397,7 @@ local function BuildCombatTab()
 			Config.Combat[key] = not Config.Combat[key]
 			sel.Text = Config.Combat[key] and "SELECT" or ""
 			btn.BackgroundColor3 = Config.Combat[key] and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
+			SaveConfig()
 		end)
 		y = y + 40
 	end
@@ -1150,6 +1407,7 @@ local function BuildCombatTab()
 	toggle("Auto shot murder", "AutoShot")
 	toggle("Auto kill murder", "AutoKill")
 	toggle("Auto throw knife", "AutoThrow")
+	toggle("Auto aimbot murder", "Aimbot")
 
 	y = y + 8
 	section("---Ui Action Buttons")
@@ -1196,6 +1454,8 @@ local function BuildCombatTab()
 	uiButtonToggle("Kill murder", "KillMurderBtn")
 	uiButtonToggle("Throw knife", "ThrowKnifeBtn")
 	uiButtonToggle("Spam trap", "PlaceTrapBtn")
+	uiButtonToggle("Morph outfit", "MorphBtn")
+	uiButtonToggle("Aimbot button", "AimbotBtn")
 
 	tab.CanvasSize = UDim2.new(0, 0, 0, y + 20)
 end
@@ -1207,7 +1467,7 @@ do
 	lbl.Size = UDim2.new(1, -30, 1, -30)
 	lbl.Position = UDim2.new(0, 15, 0, 15)
 	lbl.BackgroundTransparency = 1
-	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.19\n\n- Исправлены ESP Box, Line и стабильность Name\n- Интегрирован мультитач-драггер"
+	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.18.27\n\n- Permanent ESP Fix & Protected Core Logic"
 	lbl.TextColor3 = Color3.fromRGB(190, 190, 190)
 	lbl.TextSize = 15
 	lbl.Font = Enum.Font.GothamBold
@@ -1217,10 +1477,11 @@ do
 	lbl.Parent = tab
 end
 
--- Главный цикл
+-- Главный цикл обновления
 task.spawn(function()
-	while getgenv().MMV_AdminPanel_Running do
+	while getgenv().MMV_AdminPanel_Running and getgenv().MMV_AdminPanel_Session == currentSession do
 		pcall(UpdateESP)
+		pcall(RunAimbot)
 
 		if Config.Combat.AutoGun and not HasGun() then
 			pcall(PickUpGun)
@@ -1240,4 +1501,4 @@ task.spawn(function()
 	ClearAllESP()
 end)
 
-print("[MMV Admin Panel] v5.19 успешно загружена!")
+print("[MMV Admin Panel] v5.18.27 успешно загружена!")
