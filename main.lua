@@ -1,7 +1,7 @@
 --приветик бро! Этот код без вирусов и полностью бесплатный! Пользуйся на здоровье<3
 --[[
 	MMV Admin Panel | Gemini Ai & ChatGPT Integration
-	Version 5.18.51 (Removed Button Position Saving to Fix Off-Screen Glitch)
+	Version 5.18.52 (Final Custom MM2 Place & Vertical-Oscillation Fling)
 ]]
 
 local getgenv = getgenv or function() return _G end
@@ -26,7 +26,7 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- ====================== КОНФИГ И СОХРАНЕНИЕ (БЕЗ КООРДИНАТ КНОПОК) ======================
+-- ====================== КОНФИГ И СОХРАНЕНИЕ ======================
 local Config = {
 	ESP = {
 		Enabled = false,
@@ -131,7 +131,6 @@ if not guiSuccess or not ScreenGui.Parent then
 	pcall(function() ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end)
 end
 
--- Функция перетаскивания без запоминания позиций в файл (теперь не застрянут за экраном)
 local function MakeDraggable(guiObject)
 	local dragging = false
 	local dragInput = nil
@@ -1091,7 +1090,7 @@ CreateActionScreenButton("BombSpamBtn", "BOMB SPAM", UDim2.new(1, -175, 0, 332),
 	SaveConfig()
 end)
 
--- ====================== FLING ======================
+-- ====================== ТОЧНЫЙ FLING (КОЛЕБАНИЕ ВВЕРХ-ВНИЗ НАД ЖЕРТВОЙ) ======================
 local SelectedTargets = {}
 local function StartFling()
 	if Config.Fling.Active then return end
@@ -1123,14 +1122,23 @@ local function StartFling()
 			local currentTargetChar = targetPlayer.Character
 			local tRoot = currentTargetChar and currentTargetChar:FindFirstChild("HumanoidRootPart")
 			local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+			
 			if not tRoot or not myRoot or not Config.Fling.Active then break end
-			myRoot.CFrame = tRoot.CFrame + Vector3.new(0, 3, 0)
-			myRoot.AssemblyLinearVelocity = Vector3.new(0, -10000, 0)
-			myRoot.AssemblyAngularVelocity = Vector3.new(50000, 0, 50000)
+			
+			-- Движение вверх-вниз по оси Y (синусоида) строго над целью + привязка к её координатам
+			local offset = Vector3.new(0, 1.5 + math.sin(tick() * 35) * 1.5, 0)
+			myRoot.CFrame = tRoot.CFrame + offset
+			
+			myRoot.AssemblyLinearVelocity = Vector3.new(0, 4000, 0)
+			myRoot.AssemblyAngularVelocity = Vector3.new(99999, 99999, 99999)
+			
 			if tick() - startTime > 1.2 then break end
 		end
+		
 		Config.Fling.Active = false
 		if noclipConn then noclipConn:Disconnect() end
+		
+		-- Безопасный возврат на исходную с гашением скорости и сейвером от смерти
 		pcall(function()
 			local currentLocalChar = LocalPlayer.Character
 			local finalRoot = currentLocalChar and currentLocalChar:FindFirstChild("HumanoidRootPart")
@@ -1139,9 +1147,12 @@ local function StartFling()
 				finalRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
 				for _, part in pairs(currentLocalChar:GetChildren()) do if part:IsA("BasePart") then part.CanCollide = true end end
 				finalRoot.CFrame = originalPosition + Vector3.new(0, 3.5, 0)
-				finalRoot.Anchored = true task.wait(0.15) finalRoot.Anchored = false
+				finalRoot.Anchored = true 
+				task.wait(0.15) 
+				finalRoot.Anchored = false
 			end
 		end)
+		
 		task.wait(1.5)
 		if getgenv().MMV_AdminPanel_Session == currentSession then workspace.Gravity = 196.2 end
 	end)
@@ -1386,7 +1397,7 @@ local function BuildInfoTab()
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
 	local lbl = Instance.new("TextLabel")
 	lbl.Size = UDim2.new(1, -30, 1, -30) lbl.Position = UDim2.new(0, 15, 0, 15) lbl.BackgroundTransparency = 1
-	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.18.51\n\n- Removed Button Position Saving (Fixed Off-Screen Glitch)"
+	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.18.52\n\n- Vertical-Oscillation Fling (Active Tracking)\n- Safe Return & Velocity Recovery\n- Fixed UI Buttons Off-Screen Bug"
 	lbl.TextColor3 = Color3.fromRGB(190, 190, 190) lbl.TextSize = 15 lbl.Font = Enum.Font.GothamBold lbl.TextXAlignment = Enum.TextXAlignment.Left lbl.TextYAlignment = Enum.TextYAlignment.Top lbl.ZIndex = 4 lbl.Parent = tab
 end
 
@@ -1421,4 +1432,4 @@ task.spawn(function()
 	ClearAllESP()
 end)
 
-print("[MMV Admin Panel] v5.18.51 успешно загружена!")
+print("[MMV Admin Panel] v5.18.52 успешно загружена!")
