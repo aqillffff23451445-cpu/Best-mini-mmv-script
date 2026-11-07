@@ -1,7 +1,7 @@
 --приветик бро! Этот код без вирусов и полностью бесплатный! Пользуйся на здоровье<3
 --[[
 	MMV Admin Panel | Gemini Ai & ChatGPT Integration
-	Version 5.18.52 (Final Custom MM2 Place & Vertical-Oscillation Fling)
+	Version 5.18.53 (Added Local Anti-Cauldron Bypass)
 ]]
 
 local getgenv = getgenv or function() return _G end
@@ -42,6 +42,9 @@ local Config = {
 		OffAllRadio = false,
 		SelectedSongId = "82746224492420",
 	},
+	AntiCauldron = {
+		Enabled = false,
+	},
 	Colors = {
 		Murder = {color = Color3.fromRGB(255, 40, 40), trans = 0, rainbow = false},
 		Sheriff = {color = Color3.fromRGB(40, 100, 255), trans = 0, rainbow = false},
@@ -80,6 +83,7 @@ local function SaveConfig()
 				ESP = Config.ESP,
 				Audio = Config.Audio,
 				Combat = Config.Combat,
+				AntiCauldron = Config.AntiCauldron,
 				Colors = {}
 			}
 			for k, v in pairs(Config.Colors) do
@@ -98,6 +102,7 @@ local function LoadConfig()
 				if decoded.ESP then for k, v in pairs(decoded.ESP) do Config.ESP[k] = v end end
 				if decoded.Audio then for k, v in pairs(decoded.Audio) do Config.Audio[k] = v end end
 				if decoded.Combat then for k, v in pairs(decoded.Combat) do Config.Combat[k] = v end end
+				if decoded.AntiCauldron then for k, v in pairs(decoded.AntiCauldron) do Config.AntiCauldron[k] = v end end
 				if decoded.Colors then
 					for k, v in pairs(decoded.Colors) do
 						if Config.Colors[k] then
@@ -432,6 +437,39 @@ local function ProcessAudio()
 					if sound and Config.Audio.OffAllRadio then sound.Volume = 0 sound.Playing = false end
 				end
 			end
+		end
+	end)
+end
+
+-- ====================== ANTI-CAULDRON BYPASS (АНТИ-КОТЛЫ) ======================
+local function ProcessCauldrons()
+	if not Config.AntiCauldron.Enabled then return end
+	pcall(function()
+		for _, obj in ipairs(workspace:GetDescendants()) do
+			pcall(function()
+				-- Проверяем по структуре Handle с дочерними glow, FxPart и spin (как на скрине)
+				if obj.Name == "Handle" and obj:IsA("BasePart") then
+					local hasGlow = obj:FindFirstChild("glow")
+					local hasFx = obj:FindFirstChild("FxPart")
+					local hasSpin = obj:FindFirstChild("spin")
+					
+					if hasGlow or hasFx or hasSpin then
+						-- Отключаем коллизию и убираем видимость локально
+						obj.CanCollide = false
+						obj.Transparency = 1
+						
+						-- Также прячем все дочерние детали котла
+						for _, child in ipairs(obj:GetDescendants()) do
+							if child:IsA("BasePart") or child:IsA("Decal") or child:IsA("Texture") then
+								pcall(function()
+									child.Transparency = 1
+									if child:IsA("BasePart") then child.CanCollide = false end
+								end)
+							end
+						end
+					end
+				end
+			end)
 		end
 	end)
 end
@@ -1090,7 +1128,7 @@ CreateActionScreenButton("BombSpamBtn", "BOMB SPAM", UDim2.new(1, -175, 0, 332),
 	SaveConfig()
 end)
 
--- ====================== ТОЧНЫЙ FLING (КОЛЕБАНИЕ ВВЕРХ-ВНИЗ НАД ЖЕРТВОЙ) ======================
+-- ====================== ТОЧНЫЙ FLING ======================
 local SelectedTargets = {}
 local function StartFling()
 	if Config.Fling.Active then return end
@@ -1125,7 +1163,6 @@ local function StartFling()
 			
 			if not tRoot or not myRoot or not Config.Fling.Active then break end
 			
-			-- Движение вверх-вниз по оси Y (синусоида) строго над целью + привязка к её координатам
 			local offset = Vector3.new(0, 1.5 + math.sin(tick() * 35) * 1.5, 0)
 			myRoot.CFrame = tRoot.CFrame + offset
 			
@@ -1138,7 +1175,6 @@ local function StartFling()
 		Config.Fling.Active = false
 		if noclipConn then noclipConn:Disconnect() end
 		
-		-- Безопасный возврат на исходную с гашением скорости и сейвером от смерти
 		pcall(function()
 			local currentLocalChar = LocalPlayer.Character
 			local finalRoot = currentLocalChar and currentLocalChar:FindFirstChild("HumanoidRootPart")
@@ -1219,6 +1255,25 @@ local function BuildVisualTab()
 		s.Text = t s.TextColor3 = Color3.fromRGB(160, 160, 160) s.Font = Enum.Font.GothamBold s.TextSize = 13 s.TextXAlignment = Enum.TextXAlignment.Left s.ZIndex = 4 s.Parent = tab
 		y = y + 26
 	end
+
+	section("---Anti Cauldron (Анти-Котлы)")
+	local cauldronBtn = Instance.new("TextButton")
+	cauldronBtn.Size = UDim2.new(1, -20, 0, 34) cauldronBtn.Position = UDim2.new(0, 10, 0, y)
+	cauldronBtn.BackgroundColor3 = Config.AntiCauldron.Enabled and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
+	cauldronBtn.Text = "  Anti Cauldron Spam" cauldronBtn.TextColor3 = Color3.new(1, 1, 1) cauldronBtn.TextSize = 15 cauldronBtn.Font = Enum.Font.GothamBold cauldronBtn.TextXAlignment = Enum.TextXAlignment.Left cauldronBtn.ZIndex = 4 cauldronBtn.Parent = tab
+	Instance.new("UICorner", cauldronBtn).CornerRadius = UDim.new(0, 6)
+
+	local cauldronSel = Instance.new("TextLabel")
+	cauldronSel.Size = UDim2.new(0, 90, 1, 0) cauldronSel.Position = UDim2.new(1, -95, 0, 0) cauldronSel.BackgroundTransparency = 1
+	cauldronSel.Text = Config.AntiCauldron.Enabled and "SELECT" or "" cauldronSel.TextColor3 = Color3.fromRGB(0, 255, 120) cauldronSel.TextSize = 14 cauldronSel.Font = Enum.Font.GothamBold cauldronSel.TextXAlignment = Enum.TextXAlignment.Right cauldronSel.ZIndex = 5 cauldronSel.Parent = cauldronBtn
+
+	cauldronBtn.MouseButton1Click:Connect(function()
+		Config.AntiCauldron.Enabled = not Config.AntiCauldron.Enabled
+		cauldronSel.Text = Config.AntiCauldron.Enabled and "SELECT" or ""
+		cauldronBtn.BackgroundColor3 = Config.AntiCauldron.Enabled and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
+		SaveConfig()
+	end)
+	y = y + 44
 
 	section("---Esp")
 	local opts = {{n = "Chams esp", k = "Chams"}, {n = "Name esp", k = "Name"}, {n = "Role esp", k = "Role"}, {n = "Line esp", k = "Line"}, {n = "Box esp", k = "Box"}, {n = "Gun esp", k = "Gun"}, {n = "Trap esp", k = "Trap"}}
@@ -1397,7 +1452,7 @@ local function BuildInfoTab()
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
 	local lbl = Instance.new("TextLabel")
 	lbl.Size = UDim2.new(1, -30, 1, -30) lbl.Position = UDim2.new(0, 15, 0, 15) lbl.BackgroundTransparency = 1
-	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.18.52\n\n- Vertical-Oscillation Fling (Active Tracking)\n- Safe Return & Velocity Recovery\n- Fixed UI Buttons Off-Screen Bug"
+	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.18.53\n\n- Added Local Anti-Cauldron Bypass\n- Vertical-Oscillation Fling\n- Safe Return & Velocity Recovery"
 	lbl.TextColor3 = Color3.fromRGB(190, 190, 190) lbl.TextSize = 15 lbl.Font = Enum.Font.GothamBold lbl.TextXAlignment = Enum.TextXAlignment.Left lbl.TextYAlignment = Enum.TextYAlignment.Top lbl.ZIndex = 4 lbl.Parent = tab
 end
 
@@ -1412,7 +1467,7 @@ Players.PlayerRemoving:Connect(BuildFlingTab)
 -- ====================== УМНЫЙ ГЛАВНЫЙ ЦИКЛ ======================
 task.spawn(function()
 	while getgenv().MMV_AdminPanel_Session == currentSession and getgenv().MMV_AdminPanel_Running do
-		local anyActive = Config.ESP.Enabled or Config.Audio.OffAllRadio or Config.Combat.Aimbot or Config.Combat.AutoGun or Config.Combat.AutoShot or Config.Combat.AutoKill or Config.Combat.AutoThrow or Config.Combat.BombSpamActive
+		local anyActive = Config.ESP.Enabled or Config.Audio.OffAllRadio or Config.Combat.Aimbot or Config.Combat.AutoGun or Config.Combat.AutoShot or Config.Combat.AutoKill or Config.Combat.AutoThrow or Config.Combat.BombSpamActive or Config.AntiCauldron.Enabled
 
 		if anyActive then
 			if Config.ESP.Enabled then pcall(UpdateESP) end
@@ -1423,7 +1478,8 @@ task.spawn(function()
 			if Config.Combat.AutoKill then pcall(KillMurder) end
 			if Config.Combat.AutoThrow then pcall(ThrowKnifeAtNearest) end
 			if Config.Combat.BombSpamActive then pcall(TriggerBombSpam) end
-			task.wait(0.08)
+			if Config.AntiCauldron.Enabled then pcall(ProcessCauldrons) end
+			task.wait(0.1)
 		else
 			ClearAllESP()
 			task.wait(0.4)
@@ -1432,4 +1488,4 @@ task.spawn(function()
 	ClearAllESP()
 end)
 
-print("[MMV Admin Panel] v5.18.52 успешно загружена!")
+print("[MMV Admin Panel] v5.18.53 успешно загружена!")
