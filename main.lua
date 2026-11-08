@@ -1,7 +1,7 @@
 --приветик бро! Этот код без вирусов и полностью бесплатный! Пользуйся на здоровье<3
 -- ==============================================================================
 -- MMV Admin Panel | Gemini Ai & ChatGPT Integration
--- Version 5.19.1 (Ultra-Stable Fling, Player Mods, Anti-Cauldron, No-Settings Fix)
+-- Version 5.19.2 (Fixed ESP Colors, Drawing Lib & Stable Fling)
 -- ==============================================================================
 
 local getgenv = getgenv or function() return _G end
@@ -185,7 +185,6 @@ local function MakeDraggable(guiObject)
 	end)
 end
 
--- Иконка и Главное окно
 local ToggleIcon = Instance.new("ImageButton")
 ToggleIcon.Name = "ToggleIcon"
 ToggleIcon.Size = UDim2.new(0, 54, 0, 54)
@@ -242,7 +241,6 @@ ToggleIcon.MouseButton1Click:Connect(function()
 	MainFrame.Visible = menuVisible
 end)
 
--- TopBar
 local TopBar = Instance.new("Frame")
 TopBar.Size = UDim2.new(1, 0, 0, 46)
 TopBar.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
@@ -348,48 +346,57 @@ for i, name in ipairs(TabNames) do
 	end)
 end
 
--- ====================== РОЛИ И ЦВЕТА ======================
+-- ====================== РОЛИ И ЦВЕТА (ИСПРАВЛЕНО) ======================
 local RoleCache = {}
 local LastRoleCheck = 0
 
-local function GetRoleColor(roleName)
-	local conf = Config.Colors[roleName]
-	if not conf then return Color3.new(1,1,1) end
-	if conf.rainbow then return Color3.fromHSV(tick() % 5 / 5, 1, 1) end
-	return conf.color
-end
+local function GetRoleColor(player)
+	local roleName = "Innocent"
+	local customColor = Config.Colors["Innocent"].color
 
-local function GetPlayerRole(player)
-	if tick() - LastRoleCheck > 1.5 then
-		LastRoleCheck = tick()
-		pcall(function()
-			local ok, data = pcall(function() return ReplicatedStorage.Remotes.Gameplay.GetCurrentPlayerData:InvokeServer() end)
-			if ok and type(data) == "table" then RoleCache = data end
-		end)
-	end
+	pcall(function()
+		if tick() - LastRoleCheck > 1.5 then
+			LastRoleCheck = tick()
+			pcall(function()
+				local ok, data = pcall(function() return ReplicatedStorage.Remotes.Gameplay.GetCurrentPlayerData:InvokeServer() end)
+				if ok and type(data) == "table" then RoleCache = data end
+			end)
+		end
 
-	if RoleCache[player.Name] then
-		local role = tostring(RoleCache[player.Name].Role or RoleCache[player.Name].Team or ""):lower()
-		if role:find("murder") or role:find("killer") then return "Murder", GetRoleColor("Murder") end
-		if role:find("sheriff") then return "Sheriff", GetRoleColor("Sheriff") end
-		if role:find("innocent") then return "Innocent", GetRoleColor("Innocent") end
-	end
+		if RoleCache[player.Name] then
+			local role = tostring(RoleCache[player.Name].Role or RoleCache[player.Name].Team or ""):lower()
+			if role:find("murder") or role:find("killer") then roleName = "Murder"
+			elseif role:find("sheriff") then roleName = "Sheriff"
+			else roleName = "Innocent" end
+		else
+			local char, backpack = player.Character, player:FindFirstChild("Backpack")
+			local hasKnife, hasGun = false, false
+			for _, cont in ipairs({char, backpack}) do
+				if cont then
+					for _, item in ipairs(cont:GetChildren()) do
+						pcall(function()
+							if item:FindFirstChild("IsKnife") or item.Name:lower():find("knife") then hasKnife = true end
+							if item:FindFirstChild("IsGun") or item.Name:lower():find("gun") then hasGun = true end
+						end)
+					end
+				end
+			end
+			if hasKnife then roleName = "Murder"
+			elseif hasGun then roleName = "Sheriff"
+			else roleName = "Innocent" end
+		end
 
-	local char, backpack = player.Character, player:FindFirstChild("Backpack")
-	local hasKnife, hasGun = false, false
-	for _, cont in ipairs({char, backpack}) do
-		if cont then
-			for _, item in ipairs(cont:GetChildren()) do
-				pcall(function()
-					if item:FindFirstChild("IsKnife") or item.Name:lower():find("knife") then hasKnife = true end
-					if item:FindFirstChild("IsGun") or item.Name:lower():find("gun") then hasGun = true end
-				end)
+		local targetConf = Config.Colors[roleName]
+		if targetConf then
+			if targetConf.rainbow then 
+				customColor = Color3.fromHSV(tick() % 5 / 5, 1, 1) 
+			else 
+				customColor = targetConf.color 
 			end
 		end
-	end
-	if hasKnife then return "Murder", GetRoleColor("Murder") end
-	if hasGun then return "Sheriff", GetRoleColor("Sheriff") end
-	return "Innocent", GetRoleColor("Innocent")
+	end)
+
+	return roleName, customColor
 end
 
 local function HasGun()
@@ -408,7 +415,7 @@ local function HasGun()
 	return false, nil
 end
 
-_G.GetPlayerRole = GetPlayerRole
+_G.GetPlayerRole = GetRoleColor
 
 -- ====================== AUDIO / RADIO ======================
 local function PlaySelectedSong(songId)
@@ -448,7 +455,7 @@ local function ProcessAudio()
 	end)
 end
 
--- ====================== ANTI-CAULDRON BYPASS (АНТИ-КОТЛЫ) ======================
+-- ====================== ANTI-CAULDRON BYPASS ======================
 local function ProcessCauldrons()
 	if not Config.AntiCauldron.Enabled then return end
 	pcall(function()
@@ -477,7 +484,7 @@ local function ProcessCauldrons()
 	end)
 end
 
--- ====================== PLAYER MODS (SPEED, JUMP, NOCLIP, FLY) ======================
+-- ====================== PLAYER MODS ======================
 local flyConnection = nil
 local noclipConnection = nil
 
@@ -605,7 +612,7 @@ local function RunAimbot()
 		local targetHRP = nil
 		for _, player in ipairs(Players:GetPlayers()) do
 			if player ~= LocalPlayer and player.Character then
-				local playerRole, _ = GetPlayerRole(player)
+				local playerRole, _ = GetRoleColor(player)
 				if playerRole == "Murder" then
 					local hrp = player.Character:FindFirstChild("HumanoidRootPart")
 					local hum = player.Character:FindFirstChild("Humanoid")
@@ -629,7 +636,7 @@ local function TriggerBombSpam()
 		local targetPos = nil
 		for _, player in ipairs(Players:GetPlayers()) do
 			if player ~= LocalPlayer and player.Character then
-				local roleName, _ = GetPlayerRole(player)
+				local roleName, _ = GetRoleColor(player)
 				if roleName == "Murder" then
 					local tHRP = player.Character:FindFirstChild("HumanoidRootPart")
 					local hum = player.Character:FindFirstChild("Humanoid")
@@ -664,7 +671,7 @@ local function TriggerBombSpam()
 	end)
 end
 
--- ====================== ESP ======================
+-- ====================== ESP (ИСПРАВЛЕНО) ======================
 local Highlights = {}
 local Billboards = {}
 local Lines = {}
@@ -676,8 +683,8 @@ local function RemovePlayerESP(player)
 	pcall(function()
 		if Highlights[player] then Highlights[player]:Destroy() Highlights[player] = nil end
 		if Billboards[player] then Billboards[player]:Destroy() Billboards[player] = nil end
-		if Lines[player] then Lines[player]:Remove() Lines[player] = nil end
-		if Boxes[player] then Boxes[player]:Remove() Boxes[player] = nil end
+		if Lines[player] then pcall(function() Lines[player]:Remove() end) Lines[player] = nil end
+		if Boxes[player] then pcall(function() Boxes[player]:Remove() end) Boxes[player] = nil end
 	end)
 end
 
@@ -768,11 +775,11 @@ local function UpdateESP()
 				pcall(function()
 					local nameLower = obj.Name:lower()
 					if Config.ESP.Gun and (nameLower == "gundrop" or nameLower == "gun") then
-						validObjects[obj] = {text = "GUN DROP", color = GetRoleColor("Gun")}
+						validObjects[obj] = {text = "GUN DROP", color = select(2, GetRoleColor(LocalPlayer))} -- fallback color
 					elseif Config.ESP.Trap and IsRealTrap(obj) then
 						local visualPart = obj:FindFirstChild("TrapVisual")
 						if visualPart then
-							validObjects[obj] = {text = "TRAP", color = GetRoleColor("Trap"), adornee = visualPart}
+							validObjects[obj] = {text = "TRAP", color = Config.Colors.Trap.color, adornee = visualPart}
 							if visualPart:IsA("BasePart") then visualPart.Transparency = 0 end
 							local billboard = visualPart:FindFirstChild("TrapBillboard") or obj:FindFirstChild("TrapBillboard")
 							if billboard and billboard:IsA("BillboardGui") then billboard.Enabled = true end
@@ -824,9 +831,9 @@ Players.PlayerRemoving:Connect(RemovePlayerESP)
 if HasDrawing then
 	pcall(function()
 		RunService.RenderStepped:Connect(function()
-			if getgenv().MMV_AdminPanel_Session ~= currentSession or not getgenv().MMV_AdminPanel_Running or not Config.ESP.Enabled then
-				for player, _ in pairs(Lines) do if Lines[player] then Lines[player].Visible = false end end
-				for player, _ in pairs(Boxes) do if Boxes[player] then Boxes[player].Visible = false end end
+			if not Config.ESP.Enabled or (not Config.ESP.Line and not Config.ESP.Box) then
+				for _, l in pairs(Lines) do if l then l.Visible = false end end
+				for _, b in pairs(Boxes) do if b then b.Visible = false end end
 				return
 			end
 			
@@ -834,6 +841,9 @@ if HasDrawing then
 			
 			for _, player in ipairs(Players:GetPlayers()) do
 				pcall(function()
+					local showLine = Config.ESP.Line
+					local showBox = Config.ESP.Box
+					
 					if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
 						local char = player.Character 
 						local root = char.HumanoidRootPart 
@@ -845,7 +855,7 @@ if HasDrawing then
 							local rootPos, onScreen = Camera:WorldToViewportPoint(root.Position)
 							
 							if onScreen and rootPos.Z > 0 then
-								if Config.ESP.Line then
+								if showLine then
 									local line = Lines[player]
 									if not line then 
 										line = DrawingLib.new("Line") 
@@ -860,7 +870,7 @@ if HasDrawing then
 									Lines[player].Visible = false 
 								end
 
-								if Config.ESP.Box then
+								if showBox then
 									local box = Boxes[player]
 									if not box then 
 										box = DrawingLib.new("Square") 
@@ -1037,7 +1047,7 @@ local function ShotMurder()
 		
 		for _, player in ipairs(Players:GetPlayers()) do
 			if player ~= LocalPlayer and player.Character then
-				local roleName, _ = GetPlayerRole(player)
+				local roleName, _ = GetRoleColor(player)
 				if roleName == "Murder" then
 					local hrp = player.Character:FindFirstChild("HumanoidRootPart")
 					local head = player.Character:FindFirstChild("Head")
@@ -1064,7 +1074,7 @@ local function KillMurder()
 
 		for _, player in ipairs(Players:GetPlayers()) do
 			if player ~= LocalPlayer and player.Character then
-				local roleName, _ = GetPlayerRole(player)
+				local roleName, _ = GetRoleColor(player)
 				if roleName == "Murder" then
 					local targetHRP = player.Character:FindFirstChild("HumanoidRootPart")
 					local head = player.Character:FindFirstChild("Head")
@@ -1464,7 +1474,7 @@ local function BuildFlingTab()
 	local stopBtn = Instance.new("TextButton")
 	stopBtn.Size = UDim2.new(0.46, 0, 0, 40) stopBtn.Position = UDim2.new(0.52, 0, 0, y + 10)
 	stopBtn.BackgroundColor3 = Color3.fromRGB(170, 0, 0) stopBtn.Text = "STOP FLING"
-	stopBtn.TextColor3 = Color3.new(1, 1, 1) stopBtn.Font = Enum.Font.GothamBold stopBtn.TextSize = 15 startBtn.ZIndex = 4 stopBtn.Parent = tab
+	stopBtn.TextColor3 = Color3.new(1, 1, 1) stopBtn.Font = Enum.Font.GothamBold stopBtn.TextSize = 15 stopBtn.Parent = tab
 	Instance.new("UICorner", stopBtn).CornerRadius = UDim.new(0, 6)
 	stopBtn.MouseButton1Click:Connect(function()
 		Config.Fling.Active = false
@@ -1684,7 +1694,7 @@ local function BuildInfoTab()
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
 	local lbl = Instance.new("TextLabel")
 	lbl.Size = UDim2.new(1, -30, 1, -30) lbl.Position = UDim2.new(0, 15, 0, 15) lbl.BackgroundTransparency = 1
-	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.19.1\n\n- Added Player Tab (Speed, Jump, Noclip, Fly)\n- Local Anti-Cauldron Bypass\n- Ultra-Stable Spiral Fling"
+	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.19.2\n\n- Fixed ESP Role Colors & DrawingLib bugs\n- Added Player Tab (Speed, Jump, Noclip, Fly)\n- Local Anti-Cauldron Bypass\n- Ultra-Stable Spiral Fling"
 	lbl.TextColor3 = Color3.fromRGB(190, 190, 190) lbl.TextSize = 15 lbl.Font = Enum.Font.GothamBold lbl.TextXAlignment = Enum.TextXAlignment.Left lbl.TextYAlignment = Enum.TextYAlignment.Top lbl.ZIndex = 4 lbl.Parent = tab
 end
 
@@ -1735,4 +1745,4 @@ task.spawn(function()
 	ClearAllESP()
 end)
 
-print("[MMV Admin Panel] v5.19.1 успешно загружена!")
+print("[MMV Admin Panel] v5.19.2 успешно загружена!")
