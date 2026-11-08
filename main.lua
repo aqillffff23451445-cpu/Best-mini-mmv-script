@@ -1,7 +1,7 @@
 --приветик бро! Этот код без вирусов и полностью бесплатный! Пользуйся на здоровье<3
 -- ==============================================================================
 -- MMV Admin Panel | Gemini Ai & ChatGPT Integration
--- Version 5.22.1 (Fixed Fling & Aimbot Conflict + Smooth Prediction)
+-- Version 5.23.0 (Added Permanent Built-in MMV User Detector)
 -- ==============================================================================
 
 local getgenv = getgenv or function() return _G end
@@ -25,6 +25,16 @@ local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
+
+-- ====================== МЕТКА «СВОЕГО» (ALWAYS ACTIVE) ======================
+local function TagCharacter(char)
+	if char then
+		pcall(function() char:SetAttribute("MMV_PanelUser", true) end)
+	end
+end
+
+if LocalPlayer.Character then TagCharacter(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(TagCharacter)
 
 -- ====================== КОНФИГ И СОХРАНЕНИЕ ======================
 local Config = {
@@ -678,10 +688,9 @@ local function MorphAvatar()
 	end)
 end
 
--- ====================== AIMBOT С ПРЕДИКЦИЕЙ (БЕСКОНФЛИКТНЫЙ) ======================
+-- ====================== AIMBOT С ПРЕДИКЦИЕЙ ======================
 local function RunAimbot(deltaTime)
 	pcall(function()
-		-- ЕСЛИ АКТИВЕН FLING, АИМБОТ СТАВИТСЯ НА НАУЗУ!
 		if not Config.Combat.Aimbot or Config.Fling.Active then return end
 		
 		local targetPart = nil
@@ -769,7 +778,7 @@ local function TriggerBombSpam()
 	end)
 end
 
--- ====================== ESP & TIMER UPDATE ======================
+-- ====================== ESP & MMV USER DETECTOR ======================
 local Highlights = {}
 local Billboards = {}
 local Lines = {}
@@ -779,11 +788,13 @@ local ItemHighlights = {}
 local ItemBillboards = {}
 local ItemLines = {}
 local ItemBoxes = {}
+local HubUserBillboards = {}
 
 local function RemovePlayerESP(player)
 	pcall(function()
 		if Highlights[player] then Highlights[player]:Destroy() Highlights[player] = nil end
 		if Billboards[player] then Billboards[player]:Destroy() Billboards[player] = nil end
+		if HubUserBillboards[player] then HubUserBillboards[player]:Destroy() HubUserBillboards[player] = nil end
 		if Lines[player] then pcall(function() Lines[player]:Remove() end) Lines[player] = nil end
 		if Boxes[player] then pcall(function() Boxes[player]:Remove() end) Boxes[player] = nil end
 	end)
@@ -814,9 +825,44 @@ local function IsRealTrap(obj)
 		and obj:FindFirstChild("PlacedPlayer")
 end
 
-local function UpdateESP()
-	if not Config.ESP.Enabled then ClearAllESP() return end
+-- ПОСТОЯННОЕ ПОДКЛЮЧЕНИЕ ПЛАШКИ [MMV USER] ДЛЯ СВОИХ
+local function ProcessHubUserTag(player, head)
+	pcall(function()
+		local isUser = player.Character and player.Character:GetAttribute("MMV_PanelUser") == true
+		if isUser then
+			local hubBB = HubUserBillboards[player]
+			if not hubBB or not hubBB.Parent or hubBB.Parent ~= player.Character then
+				if hubBB then pcall(function() hubBB:Destroy() end) end
+				hubBB = Instance.new("BillboardGui")
+				hubBB.Name = "MMV_UserTag"
+				hubBB.Size = UDim2.new(0, 150, 0, 24)
+				hubBB.StudsOffset = Vector3.new(0, 4.2, 0)
+				hubBB.AlwaysOnTop = true
+				hubBB.Adornee = head
+				
+				local lbl = Instance.new("TextLabel")
+				lbl.Name = "Label"
+				lbl.Size = UDim2.new(1, 0, 1, 0)
+				lbl.BackgroundTransparency = 1
+				lbl.Text = "[MMV USER]"
+				lbl.TextSize = 14
+				lbl.Font = Enum.Font.GothamBold
+				lbl.TextColor3 = Color3.fromRGB(220, 80, 255) -- Неоново-фиолетовый цвет
+				lbl.TextStrokeTransparency = 0.1
+				lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+				lbl.Parent = hubBB
+				
+				hubBB.Parent = player.Character
+				HubUserBillboards[player] = hubBB
+			end
+			hubBB.Enabled = true
+		elseif HubUserBillboards[player] then
+			HubUserBillboards[player].Enabled = false
+		end
+	end)
+end
 
+local function UpdateESP()
 	for _, player in ipairs(Players:GetPlayers()) do
 		pcall(function()
 			if player ~= LocalPlayer and player.Character then
@@ -826,50 +872,60 @@ local function UpdateESP()
 				local hum = char:FindFirstChildOfClass("Humanoid")
 
 				if root and head and hum and hum.Health > 0 then
-					local roleName, color = GetRoleColor(player)
-					if Config.ESP.Chams then
-						local hl = Highlights[player]
-						if not hl or not hl.Parent or hl.Parent ~= char then
-							if hl then pcall(function() hl:Destroy() end) end
-							hl = Instance.new("Highlight")
-							hl.FillTransparency = 0.55
-							hl.OutlineTransparency = 1
-							hl.Parent = char
-							Highlights[player] = hl
-						end
-						hl.Adornee = char hl.FillColor = color hl.Enabled = true
-					elseif Highlights[player] then Highlights[player].Enabled = false end
+					-- Всегда отрисовываем надпись MMV USER у "своих", независимо от тумблера ESP
+					ProcessHubUserTag(player, head)
 
-					if Config.ESP.Name or Config.ESP.Role then
-						local bb = Billboards[player]
-						if not bb or not bb.Parent or bb.Parent ~= char then
-							if bb then pcall(function() bb:Destroy() end) end
-							bb = Instance.new("BillboardGui")
-							bb.Name = "MMV_ESP_Billboard"
-							bb.Size = UDim2.new(0, 150, 0, 42)
-							bb.StudsOffset = Vector3.new(0, 2.9, 0)
-							bb.AlwaysOnTop = true
-							bb.Adornee = head
-							local lbl = Instance.new("TextLabel")
-							lbl.Name = "Label"
-							lbl.Size = UDim2.new(1, 0, 1, 0)
-							lbl.BackgroundTransparency = 1
-							lbl.TextSize = 14
-							lbl.Font = Enum.Font.GothamBold
-							lbl.TextStrokeTransparency = 0.25
-							lbl.Parent = bb
-							bb.Parent = char
-							Billboards[player] = bb
-						end
-						local text = (Config.ESP.Name and Config.ESP.Role) and (player.Name .. "\n" .. roleName) or (Config.ESP.Name and player.Name or roleName)
-						bb.Enabled = true
-						local lbl = bb:FindFirstChild("Label")
-						if lbl then lbl.Text = text lbl.TextColor3 = color end
-					elseif Billboards[player] then Billboards[player].Enabled = false end
+					if Config.ESP.Enabled then
+						local roleName, color = GetRoleColor(player)
+						if Config.ESP.Chams then
+							local hl = Highlights[player]
+							if not hl or not hl.Parent or hl.Parent ~= char then
+								if hl then pcall(function() hl:Destroy() end) end
+								hl = Instance.new("Highlight")
+								hl.FillTransparency = 0.55
+								hl.OutlineTransparency = 1
+								hl.Parent = char
+								Highlights[player] = hl
+							end
+							hl.Adornee = char hl.FillColor = color hl.Enabled = true
+						elseif Highlights[player] then Highlights[player].Enabled = false end
+
+						if Config.ESP.Name or Config.ESP.Role then
+							local bb = Billboards[player]
+							if not bb or not bb.Parent or bb.Parent ~= char then
+								if bb then pcall(function() bb:Destroy() end) end
+								bb = Instance.new("BillboardGui")
+								bb.Name = "MMV_ESP_Billboard"
+								bb.Size = UDim2.new(0, 150, 0, 42)
+								bb.StudsOffset = Vector3.new(0, 2.9, 0)
+								bb.AlwaysOnTop = true
+								bb.Adornee = head
+								local lbl = Instance.new("TextLabel")
+								lbl.Name = "Label"
+								lbl.Size = UDim2.new(1, 0, 1, 0)
+								lbl.BackgroundTransparency = 1
+								lbl.TextSize = 14
+								lbl.Font = Enum.Font.GothamBold
+								lbl.TextStrokeTransparency = 0.25
+								lbl.Parent = bb
+								bb.Parent = char
+								Billboards[player] = bb
+							end
+							local text = (Config.ESP.Name and Config.ESP.Role) and (player.Name .. "\n" .. roleName) or (Config.ESP.Name and player.Name or roleName)
+							bb.Enabled = true
+							local lbl = bb:FindFirstChild("Label")
+							if lbl then lbl.Text = text lbl.TextColor3 = color end
+						elseif Billboards[player] then Billboards[player].Enabled = false end
+					else
+						if Highlights[player] then Highlights[player].Enabled = false end
+						if Billboards[player] then Billboards[player].Enabled = false end
+					end
 				else RemovePlayerESP(player) end
 			else RemovePlayerESP(player) end
 		end)
 	end
+
+	if not Config.ESP.Enabled then ClearAllItemESP() return end
 
 	local validObjects = {}
 	if Config.ESP.Gun or Config.ESP.Trap then
@@ -967,7 +1023,6 @@ if HasDrawing then
 		RunService.RenderStepped:Connect(function(deltaTime)
 			UpdateRoundTimerDisplay()
 			
-			-- Запуск аимбота (с авто-паузой во время Fling)
 			if Config.Combat.Aimbot then
 				RunAimbot(deltaTime)
 			end
@@ -1869,7 +1924,7 @@ local function BuildInfoTab()
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
 	local lbl = Instance.new("TextLabel")
 	lbl.Size = UDim2.new(1, -30, 1, -30) lbl.Position = UDim2.new(0, 15, 0, 15) lbl.BackgroundTransparency = 1
-	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.22.1\n\n- Fixed conflict between Fling and Smooth Aimbot\n- Upgraded Aimbot with smooth Lerp & Prediction\n- Added Show Round Time widget (1 sec - 3 min)\n- Fixed Audio PlaySong & Noclip toggle\n- Improved Fly with BodyVelocity (WASD + Space/Ctrl)"
+	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.23.0\n\n- Added Permanent MMV User Detector ([MMV USER] Tag)\n- Fixed conflict between Fling and Smooth Aimbot\n- Upgraded Aimbot with smooth Lerp & Prediction\n- Added Show Round Time widget (1 sec - 3 min)\n- Fixed Audio PlaySong & Noclip toggle"
 	lbl.TextColor3 = Color3.fromRGB(190, 190, 190) lbl.TextSize = 15 lbl.Font = Enum.Font.GothamBold lbl.TextXAlignment = Enum.TextXAlignment.Left lbl.TextYAlignment = Enum.TextYAlignment.Top lbl.ZIndex = 4 lbl.Parent = tab
 end
 
@@ -1885,10 +1940,12 @@ Players.PlayerRemoving:Connect(BuildFlingTab)
 -- ====================== УМНЫЙ ГЛАВНЫЙ ЦИКЛ ======================
 task.spawn(function()
 	while getgenv().MMV_AdminPanel_Session == currentSession and getgenv().MMV_AdminPanel_Running do
+		-- Цикл проверки детектора пользователей панели всегда активен
+		pcall(UpdateESP)
+
 		local anyActive = Config.ESP.Enabled or Config.Audio.OffAllRadio or Config.Combat.Aimbot or Config.Combat.AutoGun or Config.Combat.AutoShot or Config.Combat.AutoKill or Config.Combat.AutoThrow or Config.Combat.BombSpamActive or Config.AntiCauldron.Enabled or Config.Player.Enabled or Config.Player.Noclip or Config.Player.Fly or Config.ESP.RoundTimer
 
 		if anyActive then
-			if Config.ESP.Enabled then pcall(UpdateESP) end
 			if Config.ESP.RoundTimer then pcall(UpdateRoundTimerDisplay) end
 			if Config.Audio.OffAllRadio then pcall(ProcessAudio) end
 			if Config.Combat.AutoGun and not HasGun() then pcall(PickUpGun) end
@@ -1913,7 +1970,6 @@ task.spawn(function()
 
 			task.wait(0.08)
 		else
-			ClearAllESP()
 			RoundTimerWidget.Visible = false
 			task.wait(0.4)
 		end
@@ -1921,4 +1977,4 @@ task.spawn(function()
 	ClearAllESP()
 end)
 
-print("[MMV Admin Panel] v5.22.1 успешно загружена!")
+print("[MMV Admin Panel] v5.23.0 успешно загружена!")
