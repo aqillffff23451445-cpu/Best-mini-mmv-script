@@ -1,3 +1,4 @@
+--приветик бро! Этот код без вирусов и полностью бесплатный! Пользуйся на здоровье<3
 -- ==============================================================================
 -- MMV Admin Panel | Gemini Ai & ChatGPT Integration
 -- Version 5.20.0 (Fixed Audio, ToggleNoclip, Improved Fly & Stable Fling)
