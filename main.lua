@@ -26,16 +26,6 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- ====================== МЕТКА «СВОЕГО» (ALWAYS ACTIVE) ======================
-local function TagCharacter(char)
-	if char then
-		pcall(function() char:SetAttribute("MMV_PanelUser", true) end)
-	end
-end
-
-if LocalPlayer.Character then TagCharacter(LocalPlayer.Character) end
-LocalPlayer.CharacterAdded:Connect(TagCharacter)
-
 -- ====================== КОНФИГ И СОХРАНЕНИЕ ======================
 local Config = {
 	ESP = {
@@ -825,13 +815,17 @@ local function IsRealTrap(obj)
 		and obj:FindFirstChild("PlacedPlayer")
 end
 
--- ПОСТОЯННОЕ ПОДКЛЮЧЕНИЕ ПЛАШКИ [MMV USER] ДЛЯ СВОИХ
+-- ====================== МЕТКА «СВОЕГО» (ЧЕРЕЗ МАРКЕР В ПЕРСОНАЖЕ) ======================
 local function ProcessHubUserTag(player, head)
 	pcall(function()
-		local isUser = player.Character and player.Character:GetAttribute("MMV_PanelUser") == true
-		if isUser then
+		local char = player.Character
+		if not char then return end
+		
+		local hasPanel = char:FindFirstChild("MMV_PanelMarker") ~= nil
+		
+		if hasPanel then
 			local hubBB = HubUserBillboards[player]
-			if not hubBB or not hubBB.Parent or hubBB.Parent ~= player.Character then
+			if not hubBB or not hubBB.Parent or hubBB.Parent ~= char then
 				if hubBB then pcall(function() hubBB:Destroy() end) end
 				hubBB = Instance.new("BillboardGui")
 				hubBB.Name = "MMV_UserTag"
@@ -847,12 +841,12 @@ local function ProcessHubUserTag(player, head)
 				lbl.Text = "[MMV USER]"
 				lbl.TextSize = 14
 				lbl.Font = Enum.Font.GothamBold
-				lbl.TextColor3 = Color3.fromRGB(220, 80, 255) -- Неоново-фиолетовый цвет
+				lbl.TextColor3 = Color3.fromRGB(220, 80, 255)
 				lbl.TextStrokeTransparency = 0.1
 				lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 				lbl.Parent = hubBB
 				
-				hubBB.Parent = player.Character
+				hubBB.Parent = char
 				HubUserBillboards[player] = hubBB
 			end
 			hubBB.Enabled = true
@@ -861,6 +855,21 @@ local function ProcessHubUserTag(player, head)
 		end
 	end)
 end
+
+local function TagCharacter(char)
+	if char then
+		pcall(function()
+			if not char:FindFirstChild("MMV_PanelMarker") then
+				local marker = Instance.new("Folder")
+				marker.Name = "MMV_PanelMarker"
+				marker.Parent = char
+			end
+		end)
+	end
+end
+
+if LocalPlayer.Character then TagCharacter(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(TagCharacter)
 
 local function UpdateESP()
 	for _, player in ipairs(Players:GetPlayers()) do
