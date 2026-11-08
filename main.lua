@@ -1,7 +1,7 @@
 --приветик бро! Этот код без вирусов и полностью бесплатный! Пользуйся на здоровье<3
 -- ==============================================================================
 -- MMV Admin Panel | Gemini Ai & ChatGPT Integration
--- Version 5.20.0 (Fixed Audio, ToggleNoclip, Improved Fly & Stable Fling)
+-- Version 5.21.0 (Added Round Timer Widget & Visual Toggle)
 -- ==============================================================================
 
 local getgenv = getgenv or function() return _G end
@@ -37,6 +37,7 @@ local Config = {
 		Box = false,
 		Gun = false,
 		Trap = false,
+		RoundTimer = false, -- Новый тумблер таймера
 	},
 	Audio = {
 		OffAllRadio = false,
@@ -202,6 +203,44 @@ ts.Color = Color3.fromRGB(0, 0, 0)
 ts.Thickness = 2
 ts.Parent = ToggleIcon
 MakeDraggable(ToggleIcon)
+
+-- ====================== ВИДЖЕТ ТАЙМЕРА РАУНДА ======================
+local RoundTimerWidget = Instance.new("Frame")
+RoundTimerWidget.Name = "RoundTimerWidget"
+RoundTimerWidget.Size = UDim2.new(0, 85, 0, 40) -- пропорционально размеру кружка
+RoundTimerWidget.Position = UDim2.new(0.5, -42, 0, 82)
+RoundTimerWidget.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+RoundTimerWidget.BorderSizePixel = 0
+RoundTimerWidget.Visible = false
+RoundTimerWidget.ZIndex = 15
+RoundTimerWidget.Parent = ScreenGui
+Instance.new("UICorner", RoundTimerWidget).CornerRadius = UDim.new(0, 6)
+
+local timerStroke = Instance.new("UIStroke")
+timerStroke.Color = Color3.fromRGB(0, 0, 0)
+timerStroke.Thickness = 2
+timerStroke.Parent = RoundTimerWidget
+
+local TimerInnerBg = Instance.new("Frame")
+TimerInnerBg.Size = UDim2.new(1, -6, 1, -6)
+TimerInnerBg.Position = UDim2.new(0, 3, 0, 3)
+TimerInnerBg.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+TimerInnerBg.BorderSizePixel = 0
+TimerInnerBg.ZIndex = 16
+TimerInnerBg.Parent = RoundTimerWidget
+Instance.new("UICorner", TimerInnerBg).CornerRadius = UDim.new(0, 4)
+
+local TimerTextLabel = Instance.new("TextLabel")
+TimerTextLabel.Size = UDim2.new(1, 0, 1, 0)
+TimerTextLabel.BackgroundTransparency = 1
+TimerTextLabel.Text = "3:00"
+TimerTextLabel.TextColor3 = Color3.fromRGB(20, 20, 20)
+TimerTextLabel.TextSize = 18
+TimerTextLabel.Font = Enum.Font.GothamBold
+TimerTextLabel.ZIndex = 17
+TimerTextLabel.Parent = TimerInnerBg
+
+MakeDraggable(RoundTimerWidget)
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
@@ -413,7 +452,7 @@ end
 
 _G.GetPlayerRole = GetRoleColor
 
--- ====================== AUDIO / RADIO (ИСПРАВЛЕНО) ======================
+-- ====================== AUDIO / RADIO ======================
 local function PlaySelectedSong(songId)
 	if tick() - Config.Exploits.LastAudioPlay < 1.0 then return end
 	Config.Exploits.LastAudioPlay = tick()
@@ -478,7 +517,7 @@ local function ProcessCauldrons()
 	end)
 end
 
--- ====================== PLAYER MODS (NOCLIP & FLY ИСПРАВЛЕНЫ) ======================
+-- ====================== PLAYER MODS ======================
 local flyConnection = nil
 local noclipConnection = nil
 local flyBodyVelocity = nil
@@ -704,7 +743,7 @@ local function TriggerBombSpam()
 	end)
 end
 
--- ====================== ESP ======================
+-- ====================== ESP & TIMER UPDATE ======================
 local Highlights = {}
 local Billboards = {}
 local Lines = {}
@@ -865,6 +904,34 @@ local function UpdateESP()
 	end
 end
 
+-- Функция обновления таймера раунда
+local function UpdateRoundTimerDisplay()
+	pcall(function()
+		if not Config.ESP.RoundTimer then
+			RoundTimerWidget.Visible = false
+			return
+		end
+
+		local timerPart = workspace:FindFirstChild("RoundTimerPart")
+		if timerPart then
+			local timeLeft = timerPart:GetAttribute("Time") or -1
+			if timeLeft > 0 then
+				-- Ограничиваем диапазон от 1 сек (0:01) до 3 минут (3:00)
+				if timeLeft > 180 then timeLeft = 180 end
+				
+				local mins = math.floor(timeLeft / 60)
+				local secs = timeLeft % 60
+				TimerTextLabel.Text = string.format("%d:%02d", mins, secs)
+				RoundTimerWidget.Visible = true
+			else
+				RoundTimerWidget.Visible = false
+			end
+		else
+			RoundTimerWidget.Visible = false
+		end
+	end)
+end
+
 Players.PlayerAdded:Connect(function(p)
 	p.CharacterAdded:Connect(function() RemovePlayerESP(p) end)
 	p.CharacterRemoving:Connect(function() RemovePlayerESP(p) end)
@@ -874,6 +941,9 @@ Players.PlayerRemoving:Connect(RemovePlayerESP)
 if HasDrawing then
 	pcall(function()
 		RunService.RenderStepped:Connect(function()
+			-- Обновляем таймер раунда каждый кадр
+			UpdateRoundTimerDisplay()
+
 			if not Config.ESP.Enabled or (not Config.ESP.Line and not Config.ESP.Box) then
 				for _, l in pairs(Lines) do if l then l.Visible = false end end
 				for _, b in pairs(Boxes) do if b then b.Visible = false end end
@@ -1280,7 +1350,7 @@ CreateActionScreenButton("BombSpamBtn", "BOMB SPAM", UDim2.new(1, -175, 0, 332),
 	SaveConfig()
 end)
 
--- ====================== УЛЬТРА-СТАБИЛЬНЫЙ FLING (ИСПРАВЛЕНО) ======================
+-- ====================== УЛЬТРА-СТАБИЛЬНЫЙ FLING ======================
 local SelectedTargets = {}
 local function StartFling()
 	if Config.Fling.Active then return end
@@ -1575,6 +1645,25 @@ local function BuildVisualTab()
 	end)
 	y = y + 44
 
+	section("---Widgets & Round Time")
+	local timerToggleBtn = Instance.new("TextButton")
+	timerToggleBtn.Size = UDim2.new(1, -20, 0, 34) timerToggleBtn.Position = UDim2.new(0, 10, 0, y)
+	timerToggleBtn.BackgroundColor3 = Config.ESP.RoundTimer and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
+	timerToggleBtn.Text = "  Show Round Time" timerToggleBtn.TextColor3 = Color3.new(1, 1, 1) timerToggleBtn.TextSize = 15 timerToggleBtn.Font = Enum.Font.GothamBold timerToggleBtn.TextXAlignment = Enum.TextXAlignment.Left timerToggleBtn.ZIndex = 4 timerToggleBtn.Parent = tab
+	Instance.new("UICorner", timerToggleBtn).CornerRadius = UDim.new(0, 6)
+
+	local timerToggleSel = Instance.new("TextLabel")
+	timerToggleSel.Size = UDim2.new(0, 90, 1, 0) timerToggleSel.Position = UDim2.new(1, -95, 0, 0) timerToggleSel.BackgroundTransparency = 1
+	timerToggleSel.Text = Config.ESP.RoundTimer and "SELECT" or "" timerToggleSel.TextColor3 = Color3.fromRGB(0, 255, 120) timerToggleSel.TextSize = 14 timerToggleSel.Font = Enum.Font.GothamBold timerToggleSel.TextXAlignment = Enum.TextXAlignment.Right timerToggleSel.ZIndex = 5 timerToggleSel.Parent = timerToggleBtn
+
+	timerToggleBtn.MouseButton1Click:Connect(function()
+		Config.ESP.RoundTimer = not Config.ESP.RoundTimer
+		timerToggleSel.Text = Config.ESP.RoundTimer and "SELECT" or ""
+		timerToggleBtn.BackgroundColor3 = Config.ESP.RoundTimer and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
+		SaveConfig()
+	end)
+	y = y + 44
+
 	section("---Esp")
 	local opts = {{n = "Chams esp", k = "Chams"}, {n = "Name esp", k = "Name"}, {n = "Role esp", k = "Role"}, {n = "Line esp", k = "Line"}, {n = "Box esp", k = "Box"}, {n = "Gun esp", k = "Gun"}, {n = "Trap esp", k = "Trap"}}
 	for _, o in ipairs(opts) do
@@ -1752,7 +1841,7 @@ local function BuildInfoTab()
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
 	local lbl = Instance.new("TextLabel")
 	lbl.Size = UDim2.new(1, -30, 1, -30) lbl.Position = UDim2.new(0, 15, 0, 15) lbl.BackgroundTransparency = 1
-	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.20.0\n\n- Fixed Audio PlaySong & Noclip toggle\n- Improved Fly with BodyVelocity (WASD + Space/Ctrl)\n- Fixed Fling self-throw glitch\n- Fixed Gun/Trap ESP colors & Item Box/Line ESP"
+	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.21.0\n\n- Added Show Round Time widget (1 sec - 3 min)\n- Fixed Audio PlaySong & Noclip toggle\n- Improved Fly with BodyVelocity (WASD + Space/Ctrl)\n- Fixed Fling self-throw glitch & Gun/Trap ESP"
 	lbl.TextColor3 = Color3.fromRGB(190, 190, 190) lbl.TextSize = 15 lbl.Font = Enum.Font.GothamBold lbl.TextXAlignment = Enum.TextXAlignment.Left lbl.TextYAlignment = Enum.TextYAlignment.Top lbl.ZIndex = 4 lbl.Parent = tab
 end
 
@@ -1768,10 +1857,11 @@ Players.PlayerRemoving:Connect(BuildFlingTab)
 -- ====================== УМНЫЙ ГЛАВНЫЙ ЦИКЛ ======================
 task.spawn(function()
 	while getgenv().MMV_AdminPanel_Session == currentSession and getgenv().MMV_AdminPanel_Running do
-		local anyActive = Config.ESP.Enabled or Config.Audio.OffAllRadio or Config.Combat.Aimbot or Config.Combat.AutoGun or Config.Combat.AutoShot or Config.Combat.AutoKill or Config.Combat.AutoThrow or Config.Combat.BombSpamActive or Config.AntiCauldron.Enabled or Config.Player.Enabled or Config.Player.Noclip or Config.Player.Fly
+		local anyActive = Config.ESP.Enabled or Config.Audio.OffAllRadio or Config.Combat.Aimbot or Config.Combat.AutoGun or Config.Combat.AutoShot or Config.Combat.AutoKill or Config.Combat.AutoThrow or Config.Combat.BombSpamActive or Config.AntiCauldron.Enabled or Config.Player.Enabled or Config.Player.Noclip or Config.Player.Fly or Config.ESP.RoundTimer
 
 		if anyActive then
 			if Config.ESP.Enabled then pcall(UpdateESP) end
+			if Config.ESP.RoundTimer then pcall(UpdateRoundTimerDisplay) end
 			if Config.Audio.OffAllRadio then pcall(ProcessAudio) end
 			if Config.Combat.Aimbot then pcall(RunAimbot) end
 			if Config.Combat.AutoGun and not HasGun() then pcall(PickUpGun) end
@@ -1797,10 +1887,11 @@ task.spawn(function()
 			task.wait(0.08)
 		else
 			ClearAllESP()
+			RoundTimerWidget.Visible = false
 			task.wait(0.4)
 		end
 	end
 	ClearAllESP()
 end)
 
-print("[MMV Admin Panel] v5.20.0 успешно загружена!")
+print("[MMV Admin Panel] v5.21.0 успешно загружена!")
