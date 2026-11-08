@@ -1,7 +1,6 @@
---приветик бро! Этот код без вирусов и полностью бесплатный! Пользуйся на здоровье<3
 -- ==============================================================================
 -- MMV Admin Panel | Gemini Ai & ChatGPT Integration
--- Version 5.19.3 (Fixed Item ESP, Guns/Traps Colors & Drawing Objects)
+-- Version 5.20.0 (Fixed Audio, ToggleNoclip, Improved Fly & Stable Fling)
 -- ==============================================================================
 
 local getgenv = getgenv or function() return _G end
@@ -413,27 +412,25 @@ end
 
 _G.GetPlayerRole = GetRoleColor
 
--- ====================== AUDIO / RADIO ======================
+-- ====================== AUDIO / RADIO (ИСПРАВЛЕНО) ======================
 local function PlaySelectedSong(songId)
 	if tick() - Config.Exploits.LastAudioPlay < 1.0 then return end
 	Config.Exploits.LastAudioPlay = tick()
 
-	pcall(function()
-		local char = LocalPlayer.Character
-		if not char then return end
-		local radio = char:FindFirstChild("radio") or char:FindFirstChild("Radio")
-		if not radio then
-			local equipArgs = { "Gold", "Radios" }
-			pcall(function()
-				ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Inventory"):WaitForChild("Equip"):FireServer(unpack(equipArgs))
-			end)
-			task.wait(0.3)
-		end
+	task.spawn(function()
+		pcall(function()
+			local remotes = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Inventory")
+			local equipRemote = remotes:WaitForChild("Equip")
+			local playSongRemote = remotes:WaitForChild("PlaySong")
 
-		local targetId = songId or Config.Audio.SelectedSongId or "82746224492420"
-		local songUrl = "https://www.roblox.com/asset/?id=" .. targetId
-		local songArgs = { songUrl, "TerraAway" }
-		ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Inventory"):WaitForChild("SaveSong"):FireServer(unpack(songArgs))
+			equipRemote:FireServer("Gold", "Radios")
+			task.wait(0.25)
+
+			local targetId = tostring(songId or Config.Audio.SelectedSongId or "82746224492420")
+			local songUrl = "https://www.roblox.com/asset/?id=" .. targetId
+
+			playSongRemote:FireServer(songUrl)
+		end)
 	end)
 end
 
@@ -480,21 +477,24 @@ local function ProcessCauldrons()
 	end)
 end
 
--- ====================== PLAYER MODS ======================
+-- ====================== PLAYER MODS (NOCLIP & FLY ИСПРАВЛЕНЫ) ======================
 local flyConnection = nil
 local noclipConnection = nil
+local flyBodyVelocity = nil
 
 local function ToggleNoclip(state)
 	Config.Player.Noclip = state
+
 	if state then
 		if not noclipConnection then
 			noclipConnection = RunService.Stepped:Connect(function()
 				pcall(function()
-					if Config.Player.Noclip and LocalPlayer.Character then
-						for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
-							if part:IsA("BasePart") then
-								part.CanCollide = false
-							end
+					if not Config.Player.Noclip then return end
+					local char = LocalPlayer.Character
+					if not char then return end
+					for _, part in pairs(char:GetDescendants()) do
+						if part:IsA("BasePart") then
+							part.CanCollide = false
 						end
 					end
 				end)
@@ -505,59 +505,95 @@ local function ToggleNoclip(state)
 			noclipConnection:Disconnect()
 			noclipConnection = nil
 		end
+
+		pcall(function()
+			local char = LocalPlayer.Character
+			if char then
+				for _, part in pairs(char:GetDescendants()) do
+					if part:IsA("BasePart") then
+						part.CanCollide = true
+					end
+				end
+			end
+		end)
 	end
 end
 
 local function ToggleFly(state)
 	Config.Player.Fly = state
-	if state then
-		if not flyConnection then
-			flyConnection = RunService.RenderStepped:Connect(function()
-				pcall(function()
-					if not Config.Player.Fly then return end
-					local char = LocalPlayer.Character
-					local hrp = char and char:FindFirstChild("HumanoidRootPart")
-					local hum = char and char:FindFirstChildOfClass("Humanoid")
-					if hrp and hum then
-						hum.PlatformStand = true
-						local camCF = Camera.CFrame
-						local moveDir = Vector3.new()
-						
-						if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.Up) then
-							moveDir = moveDir + camCF.LookVector
-						end
-						if UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.Down) then
-							moveDir = moveDir - camCF.LookVector
-						end
-						if UserInputService:IsKeyDown(Enum.KeyCode.A) or UserInputService:IsKeyDown(Enum.KeyCode.Left) then
-							moveDir = moveDir - camCF.RightVector
-						end
-						if UserInputService:IsKeyDown(Enum.KeyCode.D) or UserInputService:IsKeyDown(Enum.KeyCode.Right) then
-							moveDir = moveDir + camCF.RightVector
-						end
-						
-						if hum.MoveDirection.Magnitude > 0 then
-							moveDir = camCF.LookVector * hum.MoveDirection.Z + camCF.RightVector * hum.MoveDirection.X
-						end
 
-						if moveDir.Magnitude > 0 then
-							hrp.Velocity = moveDir.Unit * 50
-						else
-							hrp.Velocity = Vector3.new(0, 0.1, 0)
-						end
-						hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-					end
-				end)
+	if state then
+		if flyConnection then return end
+
+		local char = LocalPlayer.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if not hrp or not hum then return end
+
+		hum.PlatformStand = true
+
+		flyBodyVelocity = Instance.new("BodyVelocity")
+		flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+		flyBodyVelocity.Velocity = Vector3.zero
+		flyBodyVelocity.Parent = hrp
+
+		flyConnection = RunService.RenderStepped:Connect(function()
+			pcall(function()
+				if not Config.Player.Fly or not flyBodyVelocity or not flyBodyVelocity.Parent then return end
+
+				local camCF = Camera.CFrame
+				local move = Vector3.zero
+				local speed = 55
+
+				if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+					move = move + camCF.LookVector
+				end
+				if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+					move = move - camCF.LookVector
+				end
+				if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+					move = move - camCF.RightVector
+				end
+				if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+					move = move + camCF.RightVector
+				end
+
+				if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+					move = move + Vector3.new(0, 1, 0)
+				end
+				if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.C) then
+					move = move - Vector3.new(0, 1, 0)
+				end
+
+				if move.Magnitude > 0 then
+					flyBodyVelocity.Velocity = move.Unit * speed
+				else
+					flyBodyVelocity.Velocity = Vector3.zero
+				end
+
+				hrp.AssemblyAngularVelocity = Vector3.zero
 			end)
-		end
+		end)
 	else
 		if flyConnection then
 			flyConnection:Disconnect()
 			flyConnection = nil
 		end
+
+		if flyBodyVelocity then
+			flyBodyVelocity:Destroy()
+			flyBodyVelocity = nil
+		end
+
 		pcall(function()
-			local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+			local char = LocalPlayer.Character
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
 			if hum then hum.PlatformStand = false end
+			if hrp then
+				hrp.AssemblyLinearVelocity = Vector3.zero
+				hrp.AssemblyAngularVelocity = Vector3.zero
+			end
 		end)
 	end
 end
@@ -667,7 +703,7 @@ local function TriggerBombSpam()
 	end)
 end
 
--- ====================== ESP (ИСПРАВЛЕНО ДЛЯ ОРУЖИЯ И ЛОВУШЕК) ======================
+-- ====================== ESP ======================
 local Highlights = {}
 local Billboards = {}
 local Lines = {}
@@ -715,7 +751,6 @@ end
 local function UpdateESP()
 	if not Config.ESP.Enabled then ClearAllESP() return end
 
-	-- 1. ИГРОКИ
 	for _, player in ipairs(Players:GetPlayers()) do
 		pcall(function()
 			if player ~= LocalPlayer and player.Character then
@@ -770,7 +805,6 @@ local function UpdateESP()
 		end)
 	end
 
-	-- 2. ОБЪЕКТЫ (ПИСТОЛЕТ / ЛОВУШКИ)
 	local validObjects = {}
 	if Config.ESP.Gun or Config.ESP.Trap then
 		pcall(function()
@@ -836,7 +870,6 @@ Players.PlayerAdded:Connect(function(p)
 end)
 Players.PlayerRemoving:Connect(RemovePlayerESP)
 
--- РЕНДЕР ЛИНИЙ И БОКСОВ (ДЛЯ ИГРОКОВ + ПИСТОЛЕТА + ЛОВУШЕК)
 if HasDrawing then
 	pcall(function()
 		RunService.RenderStepped:Connect(function()
@@ -850,7 +883,6 @@ if HasDrawing then
 			
 			local screenBottom = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
 			
-			-- 1. Линии и Боксы для Игроков
 			for _, player in ipairs(Players:GetPlayers()) do
 				pcall(function()
 					local showLine = Config.ESP.Line
@@ -899,7 +931,6 @@ if HasDrawing then
 				end)
 			end
 
-			-- 2. Линии и Боксы для Предметов (Пистолет / Ловушки)
 			for obj, _ in pairs(ItemHighlights) do
 				pcall(function()
 					if not obj or not obj.Parent then return end
@@ -1248,29 +1279,37 @@ CreateActionScreenButton("BombSpamBtn", "BOMB SPAM", UDim2.new(1, -175, 0, 332),
 	SaveConfig()
 end)
 
--- ====================== УЛЬТРА-СТАБИЛЬНЫЙ FLING (v5.19.1) ======================
+-- ====================== УЛЬТРА-СТАБИЛЬНЫЙ FLING (ИСПРАВЛЕНО) ======================
 local SelectedTargets = {}
 local function StartFling()
 	if Config.Fling.Active then return end
+
 	local targetPlayer = nil
-	for _, plr in pairs(SelectedTargets) do if plr and plr.Character then targetPlayer = plr break end end
+	for _, plr in pairs(SelectedTargets) do
+		if plr and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+			targetPlayer = plr
+			break
+		end
+	end
 	if not targetPlayer then return end
 
 	local char = LocalPlayer.Character
-	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	local root = hum and hum.RootPart
+	local root = char and char:FindFirstChild("HumanoidRootPart")
 	if not root then return end
 
 	Config.Fling.Active = true
-	local originalPosition = root.CFrame
+	local originalCFrame = root.CFrame
 	local oldGravity = workspace.Gravity
 	workspace.Gravity = 0
 
 	local noclipConn = RunService.Stepped:Connect(function()
 		pcall(function()
-			if Config.Fling.Active and LocalPlayer.Character then
-				for _, part in pairs(LocalPlayer.Character:GetChildren()) do 
-					if part:IsA("BasePart") then part.CanCollide = false end 
+			if not Config.Fling.Active then return end
+			local c = LocalPlayer.Character
+			if not c then return end
+			for _, part in pairs(c:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.CanCollide = false
 				end
 			end
 		end)
@@ -1278,55 +1317,48 @@ local function StartFling()
 
 	task.spawn(function()
 		local startTime = tick()
-		
-		while Config.Fling.Active and getgenv().MMV_AdminPanel_Session == currentSession do
-			RunService.RenderStepped:Wait()
-			
-			local currentTargetChar = targetPlayer.Character
-			local tRoot = currentTargetChar and currentTargetChar:FindFirstChild("HumanoidRootPart")
+
+		while Config.Fling.Active and (tick() - startTime) < 1.25 do
+			RunService.Heartbeat:Wait()
+
+			local tRoot = targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
 			local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-			
-			if not tRoot or not myRoot or not Config.Fling.Active then break end
-			
-			local offset = Vector3.new(math.sin(tick() * 35) * 1.4, 0.4, math.cos(tick() * 35) * 1.4)
-			myRoot.CFrame = tRoot.CFrame + offset
-			
-			myRoot.AssemblyLinearVelocity = Vector3.new(12000, 12000, 12000)
-			myRoot.AssemblyAngularVelocity = Vector3.new(20000, 20000, 20000)
-			
-			if tick() - startTime > 1.1 then break end
+			if not tRoot or not myRoot then break end
+
+			local angle = tick() * 40
+			local offset = Vector3.new(math.sin(angle) * 1.6, 0.6, math.cos(angle) * 1.6)
+			myRoot.CFrame = CFrame.new(tRoot.Position + offset)
+
+			myRoot.AssemblyLinearVelocity = Vector3.new(9999, 9999, 9999)
+			myRoot.AssemblyAngularVelocity = Vector3.new(9999, 9999, 9999)
 		end
-		
+
 		Config.Fling.Active = false
 		if noclipConn then noclipConn:Disconnect() end
-		
+
 		pcall(function()
-			local currentLocalChar = LocalPlayer.Character
-			local finalRoot = currentLocalChar and currentLocalChar:FindFirstChild("HumanoidRootPart")
-			if finalRoot then
-				finalRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-				finalRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-				
-				RunService.Heartbeat:Wait()
-				
-				finalRoot.CFrame = originalPosition + Vector3.new(0, 4, 0)
-				finalRoot.Anchored = true 
-				
-				for _, part in pairs(currentLocalChar:GetChildren()) do 
-					if part:IsA("BasePart") then part.CanCollide = true end 
+			local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+			if myRoot then
+				myRoot.AssemblyLinearVelocity = Vector3.zero
+				myRoot.AssemblyAngularVelocity = Vector3.zero
+				myRoot.Anchored = true
+
+				task.wait(0.15)
+				myRoot.CFrame = originalCFrame + Vector3.new(0, 5, 0)
+
+				for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+					if part:IsA("BasePart") then
+						part.CanCollide = true
+					end
 				end
-				
-				task.wait(1.5)
-				
-				finalRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-				finalRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-				finalRoot.Anchored = false
+
+				task.wait(0.8)
+				myRoot.Anchored = false
+				myRoot.AssemblyLinearVelocity = Vector3.zero
 			end
 		end)
-		
-		if getgenv().MMV_AdminPanel_Session == currentSession then 
-			workspace.Gravity = oldGravity 
-		end
+
+		workspace.Gravity = oldGravity
 	end)
 end
 
@@ -1719,7 +1751,7 @@ local function BuildInfoTab()
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
 	local lbl = Instance.new("TextLabel")
 	lbl.Size = UDim2.new(1, -30, 1, -30) lbl.Position = UDim2.new(0, 15, 0, 15) lbl.BackgroundTransparency = 1
-	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.19.3\n\n- Fixed Item ESP (Gun & Trap) colors\n- Added Line & Box support for dropped items\n- Added Player Tab (Speed, Jump, Noclip, Fly)\n- Local Anti-Cauldron Bypass\n- Ultra-Stable Spiral Fling"
+	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.20.0\n\n- Fixed Audio PlaySong & Noclip toggle\n- Improved Fly with BodyVelocity (WASD + Space/Ctrl)\n- Fixed Fling self-throw glitch\n- Fixed Gun/Trap ESP colors & Item Box/Line ESP"
 	lbl.TextColor3 = Color3.fromRGB(190, 190, 190) lbl.TextSize = 15 lbl.Font = Enum.Font.GothamBold lbl.TextXAlignment = Enum.TextXAlignment.Left lbl.TextYAlignment = Enum.TextYAlignment.Top lbl.ZIndex = 4 lbl.Parent = tab
 end
 
@@ -1770,4 +1802,4 @@ task.spawn(function()
 	ClearAllESP()
 end)
 
-print("[MMV Admin Panel] v5.19.3 успешно загружена!")
+print("[MMV Admin Panel] v5.20.0 успешно загружена!")
