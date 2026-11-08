@@ -1,7 +1,7 @@
 --приветик бро! Этот код без вирусов и полностью бесплатный! Пользуйся на здоровье<3
 -- ==============================================================================
 -- MMV Admin Panel | Gemini Ai & ChatGPT Integration
--- Version 5.22.0 (Integrated Smooth Lerp Aimbot + Speed Glitch Prediction)
+-- Version 5.22.1 (Fixed Fling & Aimbot Conflict + Smooth Prediction)
 -- ==============================================================================
 
 local getgenv = getgenv or function() return _G end
@@ -66,7 +66,7 @@ local Config = {
 		AutoKill = false,
 		AutoThrow = false,
 		Aimbot = false,
-		AimbotSmoothness = 14, -- Настраиваемая плавность аимбота
+		AimbotSmoothness = 14,
 		BombSpamActive = false,
 	},
 	Fling = {
@@ -678,10 +678,11 @@ local function MorphAvatar()
 	end)
 end
 
--- ====================== ПЛАВНЫЙ AIMBOT С ПРЕДИКЦИЕЙ ПРОТИВ СПИД-ГЛИТЧЕРЕЙ ======================
+-- ====================== AIMBOT С ПРЕДИКЦИЕЙ (БЕСКОНФЛИКТНЫЙ) ======================
 local function RunAimbot(deltaTime)
 	pcall(function()
-		if not Config.Combat.Aimbot then return end
+		-- ЕСЛИ АКТИВЕН FLING, АИМБОТ СТАВИТСЯ НА НАУЗУ!
+		if not Config.Combat.Aimbot or Config.Fling.Active then return end
 		
 		local targetPart = nil
 		local targetRoot = nil
@@ -712,7 +713,6 @@ local function RunAimbot(deltaTime)
 		end
 
 		if targetPart and targetRoot then
-			-- Расчет упреждения (предикции) для борьбы со спид-глитчерами
 			local predictedPos = targetPart.Position + (targetRoot.AssemblyLinearVelocity * 0.07)
 			local targetCFrame = CFrame.new(Camera.CFrame.Position, predictedPos)
 			
@@ -965,8 +965,9 @@ Players.PlayerRemoving:Connect(RemovePlayerESP)
 if HasDrawing then
 	pcall(function()
 		RunService.RenderStepped:Connect(function(deltaTime)
-			-- Обновляем таймер раунда и плавный аимбот каждый кадр
 			UpdateRoundTimerDisplay()
+			
+			-- Запуск аимбота (с авто-паузой во время Fling)
 			if Config.Combat.Aimbot then
 				RunAimbot(deltaTime)
 			end
@@ -1868,7 +1869,7 @@ local function BuildInfoTab()
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
 	local lbl = Instance.new("TextLabel")
 	lbl.Size = UDim2.new(1, -30, 1, -30) lbl.Position = UDim2.new(0, 15, 0, 15) lbl.BackgroundTransparency = 1
-	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.22.0\n\n- Upgraded Aimbot with smooth Lerp & Prediction (Anti Speed-Glitch)\n- Added Show Round Time widget (1 sec - 3 min)\n- Fixed Audio PlaySong & Noclip toggle\n- Improved Fly with BodyVelocity (WASD + Space/Ctrl)\n- Fixed Fling self-throw glitch & Gun/Trap ESP"
+	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.22.1\n\n- Fixed conflict between Fling and Smooth Aimbot\n- Upgraded Aimbot with smooth Lerp & Prediction\n- Added Show Round Time widget (1 sec - 3 min)\n- Fixed Audio PlaySong & Noclip toggle\n- Improved Fly with BodyVelocity (WASD + Space/Ctrl)"
 	lbl.TextColor3 = Color3.fromRGB(190, 190, 190) lbl.TextSize = 15 lbl.Font = Enum.Font.GothamBold lbl.TextXAlignment = Enum.TextXAlignment.Left lbl.TextYAlignment = Enum.TextYAlignment.Top lbl.ZIndex = 4 lbl.Parent = tab
 end
 
@@ -1920,4 +1921,4 @@ task.spawn(function()
 	ClearAllESP()
 end)
 
-print("[MMV Admin Panel] v5.22.0 успешно загружена!")
+print("[MMV Admin Panel] v5.22.1 успешно загружена!")
