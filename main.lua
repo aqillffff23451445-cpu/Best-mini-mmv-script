@@ -1,7 +1,7 @@
 --приветик бро! Этот код без вирусов и полностью бесплатный! Пользуйся на здоровье<3
 -- ==============================================================================
 -- MMV Admin Panel | Gemini Ai & ChatGPT Integration
--- Version 5.19.2 (Fixed ESP Colors, Drawing Lib & Stable Fling)
+-- Version 5.19.3 (Fixed Item ESP, Guns/Traps Colors & Drawing Objects)
 -- ==============================================================================
 
 local getgenv = getgenv or function() return _G end
@@ -346,14 +346,19 @@ for i, name in ipairs(TabNames) do
 	end)
 end
 
--- ====================== РОЛИ И ЦВЕТА (ИСПРАВЛЕНО) ======================
+-- ====================== РОЛИ И ЦВЕТА ======================
 local RoleCache = {}
 local LastRoleCheck = 0
 
+local function GetColorFromConfig(key)
+	local conf = Config.Colors[key]
+	if not conf then return Color3.new(1, 1, 1) end
+	if conf.rainbow then return Color3.fromHSV(tick() % 5 / 5, 1, 1) end
+	return conf.color
+end
+
 local function GetRoleColor(player)
 	local roleName = "Innocent"
-	local customColor = Config.Colors["Innocent"].color
-
 	pcall(function()
 		if tick() - LastRoleCheck > 1.5 then
 			LastRoleCheck = tick()
@@ -385,18 +390,9 @@ local function GetRoleColor(player)
 			elseif hasGun then roleName = "Sheriff"
 			else roleName = "Innocent" end
 		end
-
-		local targetConf = Config.Colors[roleName]
-		if targetConf then
-			if targetConf.rainbow then 
-				customColor = Color3.fromHSV(tick() % 5 / 5, 1, 1) 
-			else 
-				customColor = targetConf.color 
-			end
-		end
 	end)
 
-	return roleName, customColor
+	return roleName, GetColorFromConfig(roleName)
 end
 
 local function HasGun()
@@ -671,13 +667,16 @@ local function TriggerBombSpam()
 	end)
 end
 
--- ====================== ESP (ИСПРАВЛЕНО) ======================
+-- ====================== ESP (ИСПРАВЛЕНО ДЛЯ ОРУЖИЯ И ЛОВУШЕК) ======================
 local Highlights = {}
 local Billboards = {}
 local Lines = {}
 local Boxes = {}
+
 local ItemHighlights = {}
 local ItemBillboards = {}
+local ItemLines = {}
+local ItemBoxes = {}
 
 local function RemovePlayerESP(player)
 	pcall(function()
@@ -692,7 +691,9 @@ local function ClearAllItemESP()
 	pcall(function()
 		for obj, hl in pairs(ItemHighlights) do hl:Destroy() end
 		for obj, bb in pairs(ItemBillboards) do bb:Destroy() end
-		ItemHighlights, ItemBillboards = {}, {}
+		for obj, l in pairs(ItemLines) do pcall(function() l:Remove() end) end
+		for obj, b in pairs(ItemBoxes) do pcall(function() b:Remove() end) end
+		ItemHighlights, ItemBillboards, ItemLines, ItemBoxes = {}, {}, {}, {}
 	end)
 end
 
@@ -714,6 +715,7 @@ end
 local function UpdateESP()
 	if not Config.ESP.Enabled then ClearAllESP() return end
 
+	-- 1. ИГРОКИ
 	for _, player in ipairs(Players:GetPlayers()) do
 		pcall(function()
 			if player ~= LocalPlayer and player.Character then
@@ -768,6 +770,7 @@ local function UpdateESP()
 		end)
 	end
 
+	-- 2. ОБЪЕКТЫ (ПИСТОЛЕТ / ЛОВУШКИ)
 	local validObjects = {}
 	if Config.ESP.Gun or Config.ESP.Trap then
 		pcall(function()
@@ -775,11 +778,11 @@ local function UpdateESP()
 				pcall(function()
 					local nameLower = obj.Name:lower()
 					if Config.ESP.Gun and (nameLower == "gundrop" or nameLower == "gun") then
-						validObjects[obj] = {text = "GUN DROP", color = select(2, GetRoleColor(LocalPlayer))} -- fallback color
+						validObjects[obj] = {text = "GUN DROP", color = GetColorFromConfig("Gun")}
 					elseif Config.ESP.Trap and IsRealTrap(obj) then
 						local visualPart = obj:FindFirstChild("TrapVisual")
 						if visualPart then
-							validObjects[obj] = {text = "TRAP", color = Config.Colors.Trap.color, adornee = visualPart}
+							validObjects[obj] = {text = "TRAP", color = GetColorFromConfig("Trap"), adornee = visualPart}
 							if visualPart:IsA("BasePart") then visualPart.Transparency = 0 end
 							local billboard = visualPart:FindFirstChild("TrapBillboard") or obj:FindFirstChild("TrapBillboard")
 							if billboard and billboard:IsA("BillboardGui") then billboard.Enabled = true end
@@ -816,7 +819,12 @@ local function UpdateESP()
 
 	for obj, hl in pairs(ItemHighlights) do
 		if not validObjects[obj] or not obj.Parent then 
-			pcall(function() hl:Destroy() if ItemBillboards[obj] then ItemBillboards[obj]:Destroy() ItemBillboards[obj] = nil end end) 
+			pcall(function() 
+				hl:Destroy() 
+				if ItemBillboards[obj] then ItemBillboards[obj]:Destroy() ItemBillboards[obj] = nil end 
+				if ItemLines[obj] then ItemLines[obj]:Remove() ItemLines[obj] = nil end
+				if ItemBoxes[obj] then ItemBoxes[obj]:Remove() ItemBoxes[obj] = nil end
+			end) 
 			ItemHighlights[obj] = nil 
 		end
 	end
@@ -828,17 +836,21 @@ Players.PlayerAdded:Connect(function(p)
 end)
 Players.PlayerRemoving:Connect(RemovePlayerESP)
 
+-- РЕНДЕР ЛИНИЙ И БОКСОВ (ДЛЯ ИГРОКОВ + ПИСТОЛЕТА + ЛОВУШЕК)
 if HasDrawing then
 	pcall(function()
 		RunService.RenderStepped:Connect(function()
 			if not Config.ESP.Enabled or (not Config.ESP.Line and not Config.ESP.Box) then
 				for _, l in pairs(Lines) do if l then l.Visible = false end end
 				for _, b in pairs(Boxes) do if b then b.Visible = false end end
+				for _, l in pairs(ItemLines) do if l then l.Visible = false end end
+				for _, b in pairs(ItemBoxes) do if b then b.Visible = false end end
 				return
 			end
 			
 			local screenBottom = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
 			
+			-- 1. Линии и Боксы для Игроков
 			for _, player in ipairs(Players:GetPlayers()) do
 				pcall(function()
 					local showLine = Config.ESP.Line
@@ -857,41 +869,21 @@ if HasDrawing then
 							if onScreen and rootPos.Z > 0 then
 								if showLine then
 									local line = Lines[player]
-									if not line then 
-										line = DrawingLib.new("Line") 
-										line.Thickness = 2 
-										Lines[player] = line 
-									end
-									line.From = screenBottom 
-									line.To = Vector2.new(rootPos.X, rootPos.Y) 
-									line.Color = color 
-									line.Visible = true
-								elseif Lines[player] then 
-									Lines[player].Visible = false 
-								end
+									if not line then line = DrawingLib.new("Line") line.Thickness = 2 Lines[player] = line end
+									line.From = screenBottom line.To = Vector2.new(rootPos.X, rootPos.Y) line.Color = color line.Visible = true
+								elseif Lines[player] then Lines[player].Visible = false end
 
 								if showBox then
 									local box = Boxes[player]
-									if not box then 
-										box = DrawingLib.new("Square") 
-										box.Thickness = 2 
-										box.Filled = false 
-										Boxes[player] = box 
-									end
-									
+									if not box then box = DrawingLib.new("Square") box.Thickness = 2 box.Filled = false Boxes[player] = box end
 									local headPos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.8, 0))
 									local legPos = Camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
-									
 									local height = math.abs(headPos.Y - legPos.Y)
 									local width = height * 0.55
-									
 									box.Size = Vector2.new(width, height)
 									box.Position = Vector2.new(rootPos.X - width / 2, headPos.Y)
-									box.Color = color 
-									box.Visible = true
-								elseif Boxes[player] then 
-									Boxes[player].Visible = false 
-								end
+									box.Color = color box.Visible = true
+								elseif Boxes[player] then Boxes[player].Visible = false end
 							else
 								if Lines[player] then Lines[player].Visible = false end
 								if Boxes[player] then Boxes[player].Visible = false end
@@ -903,6 +895,39 @@ if HasDrawing then
 					else
 						if Lines[player] then Lines[player].Visible = false end
 						if Boxes[player] then Boxes[player].Visible = false end
+					end
+				end)
+			end
+
+			-- 2. Линии и Боксы для Предметов (Пистолет / Ловушки)
+			for obj, _ in pairs(ItemHighlights) do
+				pcall(function()
+					if not obj or not obj.Parent then return end
+					local part = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")) or obj
+					if not part then return end
+
+					local isGun = (obj.Name:lower() == "gundrop" or obj.Name:lower() == "gun")
+					local color = isGun and GetColorFromConfig("Gun") or GetColorFromConfig("Trap")
+					local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+
+					if onScreen and pos.Z > 0 then
+						if Config.ESP.Line then
+							local line = ItemLines[obj]
+							if not line then line = DrawingLib.new("Line") line.Thickness = 2 ItemLines[obj] = line end
+							line.From = screenBottom line.To = Vector2.new(pos.X, pos.Y) line.Color = color line.Visible = true
+						elseif ItemLines[obj] then ItemLines[obj].Visible = false end
+
+						if Config.ESP.Box then
+							local box = ItemBoxes[obj]
+							if not box then box = DrawingLib.new("Square") box.Thickness = 2 box.Filled = false ItemBoxes[obj] = box end
+							local boxSize = Vector2.new(35, 35)
+							box.Size = boxSize
+							box.Position = Vector2.new(pos.X - boxSize.X / 2, pos.Y - boxSize.Y / 2)
+							box.Color = color box.Visible = true
+						elseif ItemBoxes[obj] then ItemBoxes[obj].Visible = false end
+					else
+						if ItemLines[obj] then ItemLines[obj].Visible = false end
+						if ItemBoxes[obj] then ItemBoxes[obj].Visible = false end
 					end
 				end)
 			end
@@ -1694,7 +1719,7 @@ local function BuildInfoTab()
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
 	local lbl = Instance.new("TextLabel")
 	lbl.Size = UDim2.new(1, -30, 1, -30) lbl.Position = UDim2.new(0, 15, 0, 15) lbl.BackgroundTransparency = 1
-	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.19.2\n\n- Fixed ESP Role Colors & DrawingLib bugs\n- Added Player Tab (Speed, Jump, Noclip, Fly)\n- Local Anti-Cauldron Bypass\n- Ultra-Stable Spiral Fling"
+	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.19.3\n\n- Fixed Item ESP (Gun & Trap) colors\n- Added Line & Box support for dropped items\n- Added Player Tab (Speed, Jump, Noclip, Fly)\n- Local Anti-Cauldron Bypass\n- Ultra-Stable Spiral Fling"
 	lbl.TextColor3 = Color3.fromRGB(190, 190, 190) lbl.TextSize = 15 lbl.Font = Enum.Font.GothamBold lbl.TextXAlignment = Enum.TextXAlignment.Left lbl.TextYAlignment = Enum.TextYAlignment.Top lbl.ZIndex = 4 lbl.Parent = tab
 end
 
@@ -1745,4 +1770,4 @@ task.spawn(function()
 	ClearAllESP()
 end)
 
-print("[MMV Admin Panel] v5.19.2 успешно загружена!")
+print("[MMV Admin Panel] v5.19.3 успешно загружена!")
