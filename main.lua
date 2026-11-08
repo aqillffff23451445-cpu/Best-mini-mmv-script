@@ -1216,7 +1216,7 @@ CreateActionScreenButton("BombSpamBtn", "BOMB SPAM", UDim2.new(1, -175, 0, 332),
 	SaveConfig()
 end)
 
--- ====================== ТОЧНЫЙ FLING ======================
+-- ====================== СЕРВЕРНЫЙ FLING + БЕЗОПАСНЫЙ ВОЗВРАТ (v5.18.55) ======================
 local SelectedTargets = {}
 local function StartFling()
 	if Config.Fling.Active then return end
@@ -1233,51 +1233,67 @@ local function StartFling()
 	local originalPosition = root.CFrame
 	workspace.Gravity = 0
 
+	-- Отключаем коллизию на RenderStepped для максимального приоритета сквозь толпу
 	local noclipConn = RunService.Stepped:Connect(function()
 		pcall(function()
 			if Config.Fling.Active and LocalPlayer.Character then
-				for _, part in pairs(LocalPlayer.Character:GetChildren()) do if part:IsA("BasePart") then part.CanCollide = false end end
+				for _, part in pairs(LocalPlayer.Character:GetChildren()) do 
+					if part:IsA("BasePart") then part.CanCollide = false end 
+				end
 			end
 		end)
 	end)
 
 	task.spawn(function()
 		local startTime = tick()
+		local toggleVel = false
+		
 		while Config.Fling.Active and getgenv().MMV_AdminPanel_Session == currentSession do
-			RunService.Heartbeat:Wait()
+			RunService.RenderStepped:Wait()
 			local currentTargetChar = targetPlayer.Character
 			local tRoot = currentTargetChar and currentTargetChar:FindFirstChild("HumanoidRootPart")
 			local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 			
 			if not tRoot or not myRoot or not Config.Fling.Active then break end
 			
-			local offset = Vector3.new(0, 1.5 + math.sin(tick() * 35) * 1.5, 0)
+			-- Синусоидальное движение вверх-вниз строго над целью
+			local offset = Vector3.new(0, 1.2 + math.sin(tick() * 45) * 1.8, 0)
 			myRoot.CFrame = tRoot.CFrame + offset
 			
-			myRoot.AssemblyLinearVelocity = Vector3.new(0, 4000, 0)
-			myRoot.AssemblyAngularVelocity = Vector3.new(99999, 99999, 99999)
+			-- Чередование векторов скорости для обхода защиты сетевого контроля на людных серверах
+			toggleVel = not toggleVel
+			if toggleVel then
+				myRoot.AssemblyLinearVelocity = Vector3.new(99999, 99999, 99999)
+			else
+				myRoot.AssemblyLinearVelocity = Vector3.new(-99999, -99999, -99999)
+			end
 			
-			if tick() - startTime > 1.2 then break end
+			myRoot.AssemblyAngularVelocity = Vector3.new(999999, 999999, 999999)
+			
+			if tick() - startTime > 1.3 then break end
 		end
 		
 		Config.Fling.Active = false
 		if noclipConn then noclipConn:Disconnect() end
 		
+		-- Безопасный возврат: ровно на исходную точку + 3 по оси Y вверх, зависание и гашение инерции
 		pcall(function()
 			local currentLocalChar = LocalPlayer.Character
 			local finalRoot = currentLocalChar and currentLocalChar:FindFirstChild("HumanoidRootPart")
 			if finalRoot then
 				finalRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 				finalRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-				for _, part in pairs(currentLocalChar:GetChildren()) do if part:IsA("BasePart") then part.CanCollide = true end end
+				for _, part in pairs(currentLocalChar:GetChildren()) do 
+					if part:IsA("BasePart") then part.CanCollide = true end 
+				end
 				finalRoot.CFrame = originalPosition + Vector3.new(0, 3.5, 0)
 				finalRoot.Anchored = true 
-				task.wait(0.15) 
+				task.wait(1.5) -- Зависание на 1.5 секунды в воздухе, как ты просил
 				finalRoot.Anchored = false
 			end
 		end)
 		
-		task.wait(1.5)
+		task.wait(1.2)
 		if getgenv().MMV_AdminPanel_Session == currentSession then workspace.Gravity = 196.2 end
 	end)
 end
