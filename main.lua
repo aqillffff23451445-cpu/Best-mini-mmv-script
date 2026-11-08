@@ -1,8 +1,8 @@
 --приветик бро! Этот код без вирусов и полностью бесплатный! Пользуйся на здоровье<3
---[[
-	MMV Admin Panel | Gemini Ai & ChatGPT Integration
-	Version 5.18.54 (Added Player Tab with Speed, Jump, Noclip & Fly)
-]]
+-- ==============================================================================
+-- MMV Admin Panel | Gemini Ai & ChatGPT Integration
+-- Version 5.19.1 (Ultra-Stable Fling, Player Mods, Anti-Cauldron, No-Settings Fix)
+-- ==============================================================================
 
 local getgenv = getgenv or function() return _G end
 local currentSession = tick()
@@ -185,9 +185,7 @@ local function MakeDraggable(guiObject)
 	end)
 end
 
-----------------------------------------------------------------
 -- Иконка и Главное окно
-----------------------------------------------------------------
 local ToggleIcon = Instance.new("ImageButton")
 ToggleIcon.Name = "ToggleIcon"
 ToggleIcon.Size = UDim2.new(0, 54, 0, 54)
@@ -535,7 +533,6 @@ local function ToggleFly(state)
 							moveDir = moveDir + camCF.RightVector
 						end
 						
-						-- Поддержка мобильного джойстика / MoveDirection
 						if hum.MoveDirection.Magnitude > 0 then
 							moveDir = camCF.LookVector * hum.MoveDirection.Z + camCF.RightVector * hum.MoveDirection.X
 						end
@@ -719,7 +716,7 @@ local function UpdateESP()
 				local hum = char:FindFirstChildOfClass("Humanoid")
 
 				if root and head and hum and hum.Health > 0 then
-					local roleName, color = GetPlayerRole(player)
+					local roleName, color = GetRoleColor(player)
 					if Config.ESP.Chams then
 						local hl = Highlights[player]
 						if not hl or not hl.Parent or hl.Parent ~= char then
@@ -1216,7 +1213,7 @@ CreateActionScreenButton("BombSpamBtn", "BOMB SPAM", UDim2.new(1, -175, 0, 332),
 	SaveConfig()
 end)
 
--- ====================== СЕРВЕРНЫЙ FLING + БЕЗОПАСНЫЙ ВОЗВРАТ (v5.18.55) ======================
+-- ====================== УЛЬТРА-СТАБИЛЬНЫЙ FLING (v5.19.1) ======================
 local SelectedTargets = {}
 local function StartFling()
 	if Config.Fling.Active then return end
@@ -1231,9 +1228,9 @@ local function StartFling()
 
 	Config.Fling.Active = true
 	local originalPosition = root.CFrame
+	local oldGravity = workspace.Gravity
 	workspace.Gravity = 0
 
-	-- Отключаем коллизию на RenderStepped для максимального приоритета сквозь толпу
 	local noclipConn = RunService.Stepped:Connect(function()
 		pcall(function()
 			if Config.Fling.Active and LocalPlayer.Character then
@@ -1246,55 +1243,55 @@ local function StartFling()
 
 	task.spawn(function()
 		local startTime = tick()
-		local toggleVel = false
 		
 		while Config.Fling.Active and getgenv().MMV_AdminPanel_Session == currentSession do
 			RunService.RenderStepped:Wait()
+			
 			local currentTargetChar = targetPlayer.Character
 			local tRoot = currentTargetChar and currentTargetChar:FindFirstChild("HumanoidRootPart")
 			local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 			
 			if not tRoot or not myRoot or not Config.Fling.Active then break end
 			
-			-- Синусоидальное движение вверх-вниз строго над целью
-			local offset = Vector3.new(0, 1.2 + math.sin(tick() * 45) * 1.8, 0)
+			local offset = Vector3.new(math.sin(tick() * 35) * 1.4, 0.4, math.cos(tick() * 35) * 1.4)
 			myRoot.CFrame = tRoot.CFrame + offset
 			
-			-- Чередование векторов скорости для обхода защиты сетевого контроля на людных серверах
-			toggleVel = not toggleVel
-			if toggleVel then
-				myRoot.AssemblyLinearVelocity = Vector3.new(99999, 99999, 99999)
-			else
-				myRoot.AssemblyLinearVelocity = Vector3.new(-99999, -99999, -99999)
-			end
+			myRoot.AssemblyLinearVelocity = Vector3.new(12000, 12000, 12000)
+			myRoot.AssemblyAngularVelocity = Vector3.new(20000, 20000, 20000)
 			
-			myRoot.AssemblyAngularVelocity = Vector3.new(999999, 999999, 999999)
-			
-			if tick() - startTime > 1.3 then break end
+			if tick() - startTime > 1.1 then break end
 		end
 		
 		Config.Fling.Active = false
 		if noclipConn then noclipConn:Disconnect() end
 		
-		-- Безопасный возврат: ровно на исходную точку + 3 по оси Y вверх, зависание и гашение инерции
 		pcall(function()
 			local currentLocalChar = LocalPlayer.Character
 			local finalRoot = currentLocalChar and currentLocalChar:FindFirstChild("HumanoidRootPart")
 			if finalRoot then
 				finalRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 				finalRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+				
+				RunService.Heartbeat:Wait()
+				
+				finalRoot.CFrame = originalPosition + Vector3.new(0, 4, 0)
+				finalRoot.Anchored = true 
+				
 				for _, part in pairs(currentLocalChar:GetChildren()) do 
 					if part:IsA("BasePart") then part.CanCollide = true end 
 				end
-				finalRoot.CFrame = originalPosition + Vector3.new(0, 3.5, 0)
-				finalRoot.Anchored = true 
-				task.wait(1.5) -- Зависание на 1.5 секунды в воздухе, как ты просил
+				
+				task.wait(1.5)
+				
+				finalRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+				finalRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
 				finalRoot.Anchored = false
 			end
 		end)
 		
-		task.wait(1.2)
-		if getgenv().MMV_AdminPanel_Session == currentSession then workspace.Gravity = 196.2 end
+		if getgenv().MMV_AdminPanel_Session == currentSession then 
+			workspace.Gravity = oldGravity 
+		end
 	end)
 end
 
@@ -1311,7 +1308,6 @@ local function BuildPlayerTab()
 		y = y + 26
 	end
 
-	-- Enable Button
 	local enableBtn = Instance.new("TextButton")
 	enableBtn.Size = UDim2.new(1, -20, 0, 36) enableBtn.Position = UDim2.new(0, 10, 0, y)
 	enableBtn.BackgroundColor3 = Config.Player.Enabled and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
@@ -1332,7 +1328,6 @@ local function BuildPlayerTab()
 	end)
 	y = y + 44
 
-	-- Walk Speed Input
 	local speedLabel = Instance.new("TextLabel")
 	speedLabel.Size = UDim2.new(0, 150, 0, 34) speedLabel.Position = UDim2.new(0, 10, 0, y) speedLabel.BackgroundTransparency = 1
 	speedLabel.Text = "  Walk Speed" speedLabel.TextColor3 = Color3.new(1, 1, 1) speedLabel.TextSize = 14 speedLabel.Font = Enum.Font.GothamBold speedLabel.TextXAlignment = Enum.TextXAlignment.Left speedLabel.ZIndex = 4 speedLabel.Parent = tab
@@ -1361,7 +1356,6 @@ local function BuildPlayerTab()
 	end)
 	y = y + 42
 
-	-- Jump Power Input
 	local jumpLabel = Instance.new("TextLabel")
 	jumpLabel.Size = UDim2.new(0, 150, 0, 34) jumpLabel.Position = UDim2.new(0, 10, 0, y) jumpLabel.BackgroundTransparency = 1
 	jumpLabel.Text = "  Jump Power" jumpLabel.TextColor3 = Color3.new(1, 1, 1) jumpLabel.TextSize = 14 jumpLabel.Font = Enum.Font.GothamBold jumpLabel.TextXAlignment = Enum.TextXAlignment.Left jumpLabel.ZIndex = 4 jumpLabel.Parent = tab
@@ -1392,7 +1386,6 @@ local function BuildPlayerTab()
 
 	section("---Toggles (Independent)")
 
-	-- Noclip Button
 	local noclipBtn = Instance.new("TextButton")
 	noclipBtn.Size = UDim2.new(1, -20, 0, 36) noclipBtn.Position = UDim2.new(0, 10, 0, y)
 	noclipBtn.BackgroundColor3 = Config.Player.Noclip and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
@@ -1412,7 +1405,6 @@ local function BuildPlayerTab()
 	end)
 	y = y + 42
 
-	-- Fly Button
 	local flyBtn = Instance.new("TextButton")
 	flyBtn.Size = UDim2.new(1, -20, 0, 36) flyBtn.Position = UDim2.new(0, 10, 0, y)
 	flyBtn.BackgroundColor3 = Config.Player.Fly and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
@@ -1472,7 +1464,7 @@ local function BuildFlingTab()
 	local stopBtn = Instance.new("TextButton")
 	stopBtn.Size = UDim2.new(0.46, 0, 0, 40) stopBtn.Position = UDim2.new(0.52, 0, 0, y + 10)
 	stopBtn.BackgroundColor3 = Color3.fromRGB(170, 0, 0) stopBtn.Text = "STOP FLING"
-	stopBtn.TextColor3 = Color3.new(1, 1, 1) stopBtn.Font = Enum.Font.GothamBold stopBtn.TextSize = 15 stopBtn.ZIndex = 4 stopBtn.Parent = tab
+	stopBtn.TextColor3 = Color3.new(1, 1, 1) stopBtn.Font = Enum.Font.GothamBold stopBtn.TextSize = 15 startBtn.ZIndex = 4 stopBtn.Parent = tab
 	Instance.new("UICorner", stopBtn).CornerRadius = UDim.new(0, 6)
 	stopBtn.MouseButton1Click:Connect(function()
 		Config.Fling.Active = false
@@ -1692,7 +1684,7 @@ local function BuildInfoTab()
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
 	local lbl = Instance.new("TextLabel")
 	lbl.Size = UDim2.new(1, -30, 1, -30) lbl.Position = UDim2.new(0, 15, 0, 15) lbl.BackgroundTransparency = 1
-	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.18.54\n\n- Added Player Tab (Speed, Jump, Noclip, Fly)\n- Local Anti-Cauldron Bypass\n- Vertical-Oscillation Fling"
+	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.19.1\n\n- Added Player Tab (Speed, Jump, Noclip, Fly)\n- Local Anti-Cauldron Bypass\n- Ultra-Stable Spiral Fling"
 	lbl.TextColor3 = Color3.fromRGB(190, 190, 190) lbl.TextSize = 15 lbl.Font = Enum.Font.GothamBold lbl.TextXAlignment = Enum.TextXAlignment.Left lbl.TextYAlignment = Enum.TextYAlignment.Top lbl.ZIndex = 4 lbl.Parent = tab
 end
 
@@ -1721,7 +1713,6 @@ task.spawn(function()
 			if Config.Combat.BombSpamActive then pcall(TriggerBombSpam) end
 			if Config.AntiCauldron.Enabled then pcall(ProcessCauldrons) end
 			
-			-- Применение настроек Player (Speed & Jump)
 			pcall(function()
 				local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 				if hum then
@@ -1744,4 +1735,4 @@ task.spawn(function()
 	ClearAllESP()
 end)
 
-print("[MMV Admin Panel] v5.18.54 успешно загружена!")
+print("[MMV Admin Panel] v5.19.1 успешно загружена!")
