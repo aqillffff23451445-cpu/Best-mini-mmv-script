@@ -1,7 +1,7 @@
 --приветик бро! Этот код без вирусов и полностью бесплатный! Пользуйся на здоровье<3
 -- ==============================================================================
 -- MMV Admin Panel | Gemini Ai & ChatGPT Integration
--- Version 5.21.0 (Added Round Timer Widget & Visual Toggle)
+-- Version 5.22.0 (Integrated Smooth Lerp Aimbot + Speed Glitch Prediction)
 -- ==============================================================================
 
 local getgenv = getgenv or function() return _G end
@@ -37,7 +37,7 @@ local Config = {
 		Box = false,
 		Gun = false,
 		Trap = false,
-		RoundTimer = false, -- Новый тумблер таймера
+		RoundTimer = false,
 	},
 	Audio = {
 		OffAllRadio = false,
@@ -66,6 +66,7 @@ local Config = {
 		AutoKill = false,
 		AutoThrow = false,
 		Aimbot = false,
+		AimbotSmoothness = 14, -- Настраиваемая плавность аимбота
 		BombSpamActive = false,
 	},
 	Fling = {
@@ -207,7 +208,7 @@ MakeDraggable(ToggleIcon)
 -- ====================== ВИДЖЕТ ТАЙМЕРА РАУНДА ======================
 local RoundTimerWidget = Instance.new("Frame")
 RoundTimerWidget.Name = "RoundTimerWidget"
-RoundTimerWidget.Size = UDim2.new(0, 85, 0, 40) -- пропорционально размеру кружка
+RoundTimerWidget.Size = UDim2.new(0, 85, 0, 40)
 RoundTimerWidget.Position = UDim2.new(0.5, -42, 0, 82)
 RoundTimerWidget.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 RoundTimerWidget.BorderSizePixel = 0
@@ -677,22 +678,47 @@ local function MorphAvatar()
 	end)
 end
 
--- ====================== AIMBOT ======================
-local function RunAimbot()
+-- ====================== ПЛАВНЫЙ AIMBOT С ПРЕДИКЦИЕЙ ПРОТИВ СПИД-ГЛИТЧЕРЕЙ ======================
+local function RunAimbot(deltaTime)
 	pcall(function()
 		if not Config.Combat.Aimbot then return end
-		local targetHRP = nil
+		
+		local targetPart = nil
+		local targetRoot = nil
+		local shortestDistance = math.huge
+		local mousePos = UserInputService:GetMouseLocation()
+
 		for _, player in ipairs(Players:GetPlayers()) do
 			if player ~= LocalPlayer and player.Character then
-				local playerRole, _ = GetRoleColor(player)
-				if playerRole == "Murder" then
-					local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-					local hum = player.Character:FindFirstChild("Humanoid")
-					if hrp and hum and hum.Health > 0 then targetHRP = hrp break end
+				local roleName, _ = GetRoleColor(player)
+				if roleName == "Murder" then
+					local head = player.Character:FindFirstChild("Head")
+					local root = player.Character:FindFirstChild("HumanoidRootPart")
+					local hum = player.Character:FindFirstChildOfClass("Humanoid")
+					
+					if head and root and hum and hum.Health > 0 then
+						local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+						if onScreen then
+							local distToMouse = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+							if distToMouse < shortestDistance then
+								shortestDistance = distToMouse
+								targetPart = head
+								targetRoot = root
+							end
+						end
+					end
 				end
 			end
 		end
-		if targetHRP then Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetHRP.Position) end
+
+		if targetPart and targetRoot then
+			-- Расчет упреждения (предикции) для борьбы со спид-глитчерами
+			local predictedPos = targetPart.Position + (targetRoot.AssemblyLinearVelocity * 0.07)
+			local targetCFrame = CFrame.new(Camera.CFrame.Position, predictedPos)
+			
+			local alpha = math.clamp(deltaTime * Config.Combat.AimbotSmoothness, 0, 1)
+			Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, alpha)
+		end
 	end)
 end
 
@@ -916,9 +942,7 @@ local function UpdateRoundTimerDisplay()
 		if timerPart then
 			local timeLeft = timerPart:GetAttribute("Time") or -1
 			if timeLeft > 0 then
-				-- Ограничиваем диапазон от 1 сек (0:01) до 3 минут (3:00)
 				if timeLeft > 180 then timeLeft = 180 end
-				
 				local mins = math.floor(timeLeft / 60)
 				local secs = timeLeft % 60
 				TimerTextLabel.Text = string.format("%d:%02d", mins, secs)
@@ -940,9 +964,12 @@ Players.PlayerRemoving:Connect(RemovePlayerESP)
 
 if HasDrawing then
 	pcall(function()
-		RunService.RenderStepped:Connect(function()
-			-- Обновляем таймер раунда каждый кадр
+		RunService.RenderStepped:Connect(function(deltaTime)
+			-- Обновляем таймер раунда и плавный аимбот каждый кадр
 			UpdateRoundTimerDisplay()
+			if Config.Combat.Aimbot then
+				RunAimbot(deltaTime)
+			end
 
 			if not Config.ESP.Enabled or (not Config.ESP.Line and not Config.ESP.Box) then
 				for _, l in pairs(Lines) do if l then l.Visible = false end end
@@ -1841,7 +1868,7 @@ local function BuildInfoTab()
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
 	local lbl = Instance.new("TextLabel")
 	lbl.Size = UDim2.new(1, -30, 1, -30) lbl.Position = UDim2.new(0, 15, 0, 15) lbl.BackgroundTransparency = 1
-	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.21.0\n\n- Added Show Round Time widget (1 sec - 3 min)\n- Fixed Audio PlaySong & Noclip toggle\n- Improved Fly with BodyVelocity (WASD + Space/Ctrl)\n- Fixed Fling self-throw glitch & Gun/Trap ESP"
+	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.22.0\n\n- Upgraded Aimbot with smooth Lerp & Prediction (Anti Speed-Glitch)\n- Added Show Round Time widget (1 sec - 3 min)\n- Fixed Audio PlaySong & Noclip toggle\n- Improved Fly with BodyVelocity (WASD + Space/Ctrl)\n- Fixed Fling self-throw glitch & Gun/Trap ESP"
 	lbl.TextColor3 = Color3.fromRGB(190, 190, 190) lbl.TextSize = 15 lbl.Font = Enum.Font.GothamBold lbl.TextXAlignment = Enum.TextXAlignment.Left lbl.TextYAlignment = Enum.TextYAlignment.Top lbl.ZIndex = 4 lbl.Parent = tab
 end
 
@@ -1863,7 +1890,6 @@ task.spawn(function()
 			if Config.ESP.Enabled then pcall(UpdateESP) end
 			if Config.ESP.RoundTimer then pcall(UpdateRoundTimerDisplay) end
 			if Config.Audio.OffAllRadio then pcall(ProcessAudio) end
-			if Config.Combat.Aimbot then pcall(RunAimbot) end
 			if Config.Combat.AutoGun and not HasGun() then pcall(PickUpGun) end
 			if Config.Combat.AutoShot then pcall(ShotMurder) end
 			if Config.Combat.AutoKill then pcall(KillMurder) end
@@ -1894,4 +1920,4 @@ task.spawn(function()
 	ClearAllESP()
 end)
 
-print("[MMV Admin Panel] v5.21.0 успешно загружена!")
+print("[MMV Admin Panel] v5.22.0 успешно загружена!")
