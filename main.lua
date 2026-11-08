@@ -1,7 +1,7 @@
 --приветик бро! Этот код без вирусов и полностью бесплатный! Пользуйся на здоровье<3
 --[[
 	MMV Admin Panel | Gemini Ai & ChatGPT Integration
-	Version 5.18.53 (Added Local Anti-Cauldron Bypass)
+	Version 5.18.54 (Added Player Tab with Speed, Jump, Noclip & Fly)
 ]]
 
 local getgenv = getgenv or function() return _G end
@@ -45,6 +45,13 @@ local Config = {
 	AntiCauldron = {
 		Enabled = false,
 	},
+	Player = {
+		Enabled = false,
+		WalkSpeed = 16,
+		JumpPower = 50,
+		Noclip = false,
+		Fly = false,
+	},
 	Colors = {
 		Murder = {color = Color3.fromRGB(255, 40, 40), trans = 0, rainbow = false},
 		Sheriff = {color = Color3.fromRGB(40, 100, 255), trans = 0, rainbow = false},
@@ -84,6 +91,7 @@ local function SaveConfig()
 				Audio = Config.Audio,
 				Combat = Config.Combat,
 				AntiCauldron = Config.AntiCauldron,
+				Player = Config.Player,
 				Colors = {}
 			}
 			for k, v in pairs(Config.Colors) do
@@ -103,6 +111,7 @@ local function LoadConfig()
 				if decoded.Audio then for k, v in pairs(decoded.Audio) do Config.Audio[k] = v end end
 				if decoded.Combat then for k, v in pairs(decoded.Combat) do Config.Combat[k] = v end end
 				if decoded.AntiCauldron then for k, v in pairs(decoded.AntiCauldron) do Config.AntiCauldron[k] = v end end
+				if decoded.Player then for k, v in pairs(decoded.Player) do Config.Player[k] = v end end
 				if decoded.Colors then
 					for k, v in pairs(decoded.Colors) do
 						if Config.Colors[k] then
@@ -286,8 +295,8 @@ Content.ZIndex = 3
 Content.Parent = MainFrame
 
 local Tabs = {}
-local TabNames = {"Fling", "Visual", "Combat", "Info"}
-local CurrentTab = "Fling"
+local TabNames = {"Player", "Fling", "Visual", "Combat", "Info"}
+local CurrentTab = "Player"
 
 for _, name in ipairs(TabNames) do
 	local frame = Instance.new("ScrollingFrame")
@@ -297,7 +306,7 @@ for _, name in ipairs(TabNames) do
 	frame.BorderSizePixel = 0
 	frame.ScrollBarThickness = 4
 	frame.CanvasSize = UDim2.new(0, 0, 0, 600)
-	frame.Visible = (name == "Fling")
+	frame.Visible = (name == "Player")
 	frame.ZIndex = 3
 	frame.Parent = Content
 	Tabs[name] = frame
@@ -323,7 +332,7 @@ for i, name in ipairs(TabNames) do
 	btn.Position = UDim2.new(0, 7, 0, 10 + (i-1)*46)
 	btn.BackgroundColor3 = Color3.fromRGB(42, 42, 42)
 	btn.Text = name
-	btn.TextColor3 = (name == "Fling") and Color3.fromRGB(0, 255, 170) or Color3.fromRGB(210, 210, 210)
+	btn.TextColor3 = (name == "Player") and Color3.fromRGB(0, 255, 170) or Color3.fromRGB(210, 210, 210)
 	btn.TextSize = 15
 	btn.Font = Enum.Font.GothamBold
 	btn.ZIndex = 4
@@ -447,18 +456,14 @@ local function ProcessCauldrons()
 	pcall(function()
 		for _, obj in ipairs(workspace:GetDescendants()) do
 			pcall(function()
-				-- Проверяем по структуре Handle с дочерними glow, FxPart и spin (как на скрине)
 				if obj.Name == "Handle" and obj:IsA("BasePart") then
 					local hasGlow = obj:FindFirstChild("glow")
 					local hasFx = obj:FindFirstChild("FxPart")
 					local hasSpin = obj:FindFirstChild("spin")
 					
 					if hasGlow or hasFx or hasSpin then
-						-- Отключаем коллизию и убираем видимость локально
 						obj.CanCollide = false
 						obj.Transparency = 1
-						
-						-- Также прячем все дочерние детали котла
 						for _, child in ipairs(obj:GetDescendants()) do
 							if child:IsA("BasePart") or child:IsA("Decal") or child:IsA("Texture") then
 								pcall(function()
@@ -472,6 +477,89 @@ local function ProcessCauldrons()
 			end)
 		end
 	end)
+end
+
+-- ====================== PLAYER MODS (SPEED, JUMP, NOCLIP, FLY) ======================
+local flyConnection = nil
+local noclipConnection = nil
+
+local function ToggleNoclip(state)
+	Config.Player.Noclip = state
+	if state then
+		if not noclipConnection then
+			noclipConnection = RunService.Stepped:Connect(function()
+				pcall(function()
+					if Config.Player.Noclip and LocalPlayer.Character then
+						for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+							if part:IsA("BasePart") then
+								part.CanCollide = false
+							end
+						end
+					end
+				end)
+			end)
+		end
+	else
+		if noclipConnection then
+			noclipConnection:Disconnect()
+			noclipConnection = nil
+		end
+	end
+end
+
+local function ToggleFly(state)
+	Config.Player.Fly = state
+	if state then
+		if not flyConnection then
+			flyConnection = RunService.RenderStepped:Connect(function()
+				pcall(function()
+					if not Config.Player.Fly then return end
+					local char = LocalPlayer.Character
+					local hrp = char and char:FindFirstChild("HumanoidRootPart")
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					if hrp and hum then
+						hum.PlatformStand = true
+						local camCF = Camera.CFrame
+						local moveDir = Vector3.new()
+						
+						if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.Up) then
+							moveDir = moveDir + camCF.LookVector
+						end
+						if UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.Down) then
+							moveDir = moveDir - camCF.LookVector
+						end
+						if UserInputService:IsKeyDown(Enum.KeyCode.A) or UserInputService:IsKeyDown(Enum.KeyCode.Left) then
+							moveDir = moveDir - camCF.RightVector
+						end
+						if UserInputService:IsKeyDown(Enum.KeyCode.D) or UserInputService:IsKeyDown(Enum.KeyCode.Right) then
+							moveDir = moveDir + camCF.RightVector
+						end
+						
+						-- Поддержка мобильного джойстика / MoveDirection
+						if hum.MoveDirection.Magnitude > 0 then
+							moveDir = camCF.LookVector * hum.MoveDirection.Z + camCF.RightVector * hum.MoveDirection.X
+						end
+
+						if moveDir.Magnitude > 0 then
+							hrp.Velocity = moveDir.Unit * 50
+						else
+							hrp.Velocity = Vector3.new(0, 0.1, 0)
+						end
+						hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+					end
+				end)
+			end)
+		end
+	else
+		if flyConnection then
+			flyConnection:Disconnect()
+			flyConnection = nil
+		end
+		pcall(function()
+			local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+			if hum then hum.PlatformStand = false end
+		end)
+	end
 end
 
 -- ====================== MORPH ======================
@@ -1195,6 +1283,142 @@ local function StartFling()
 end
 
 -- ====================== ПОСТРОЕНИЕ ВКЛАДОК ======================
+local function BuildPlayerTab()
+	local tab = Tabs.Player
+	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
+	local y = 12
+
+	local function section(t)
+		local s = Instance.new("TextLabel")
+		s.Size = UDim2.new(1, -20, 0, 22) s.Position = UDim2.new(0, 10, 0, y) s.BackgroundTransparency = 1
+		s.Text = t s.TextColor3 = Color3.fromRGB(160, 160, 160) s.Font = Enum.Font.GothamBold s.TextSize = 13 s.TextXAlignment = Enum.TextXAlignment.Left s.ZIndex = 4 s.Parent = tab
+		y = y + 26
+	end
+
+	-- Enable Button
+	local enableBtn = Instance.new("TextButton")
+	enableBtn.Size = UDim2.new(1, -20, 0, 36) enableBtn.Position = UDim2.new(0, 10, 0, y)
+	enableBtn.BackgroundColor3 = Config.Player.Enabled and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
+	enableBtn.Text = "  enable" enableBtn.TextColor3 = Color3.new(1, 1, 1) enableBtn.TextSize = 15 enableBtn.Font = Enum.Font.GothamBold enableBtn.TextXAlignment = Enum.TextXAlignment.Left enableBtn.ZIndex = 4 enableBtn.Parent = tab
+	Instance.new("UICorner", enableBtn).CornerRadius = UDim.new(0, 6)
+
+	local enableSel = Instance.new("TextLabel")
+	enableSel.Size = UDim2.new(0, 90, 1, 0) enableSel.Position = UDim2.new(1, -95, 0, 0) enableSel.BackgroundTransparency = 1
+	enableSel.Text = Config.Player.Enabled and "●" or "○" enableSel.TextColor3 = Config.Player.Enabled and Color3.fromRGB(0, 255, 120) or Color3.fromRGB(180, 180, 180)
+	enableSel.TextSize = 18 enableSel.Font = Enum.Font.GothamBold enableSel.TextXAlignment = Enum.TextXAlignment.Right enableSel.ZIndex = 5 enableSel.Parent = enableBtn
+
+	enableBtn.MouseButton1Click:Connect(function()
+		Config.Player.Enabled = not Config.Player.Enabled
+		enableSel.Text = Config.Player.Enabled and "●" or "○"
+		enableSel.TextColor3 = Config.Player.Enabled and Color3.fromRGB(0, 255, 120) or Color3.fromRGB(180, 180, 180)
+		enableBtn.BackgroundColor3 = Config.Player.Enabled and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
+		SaveConfig()
+	end)
+	y = y + 44
+
+	-- Walk Speed Input
+	local speedLabel = Instance.new("TextLabel")
+	speedLabel.Size = UDim2.new(0, 150, 0, 34) speedLabel.Position = UDim2.new(0, 10, 0, y) speedLabel.BackgroundTransparency = 1
+	speedLabel.Text = "  Walk Speed" speedLabel.TextColor3 = Color3.new(1, 1, 1) speedLabel.TextSize = 14 speedLabel.Font = Enum.Font.GothamBold speedLabel.TextXAlignment = Enum.TextXAlignment.Left speedLabel.ZIndex = 4 speedLabel.Parent = tab
+	Instance.new("UICorner", speedLabel).CornerRadius = UDim.new(0, 6)
+	speedLabel.BackgroundColor3 = Color3.fromRGB(52, 52, 52)
+
+	local speedBox = Instance.new("TextBox")
+	speedBox.Size = UDim2.new(0, 130, 0, 34) speedBox.Position = UDim2.new(1, -140, 0, y)
+	speedBox.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	speedBox.Text = tostring(Config.Player.WalkSpeed)
+	speedBox.PlaceholderText = "speed value..."
+	speedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+	speedBox.PlaceholderColor3 = Color3.fromRGB(170, 170, 170)
+	speedBox.TextSize = 13 speedBox.Font = Enum.Font.GothamBold speedBox.ZIndex = 4 speedBox.Parent = tab
+	Instance.new("UICorner", speedBox).CornerRadius = UDim.new(0, 6)
+
+	speedBox.FocusLost:Connect(function()
+		local val = tonumber(speedBox.Text)
+		if val then
+			Config.Player.WalkSpeed = math.clamp(val, 0, 300)
+			speedBox.Text = tostring(Config.Player.WalkSpeed)
+			SaveConfig()
+		else
+			speedBox.Text = tostring(Config.Player.WalkSpeed)
+		end
+	end)
+	y = y + 42
+
+	-- Jump Power Input
+	local jumpLabel = Instance.new("TextLabel")
+	jumpLabel.Size = UDim2.new(0, 150, 0, 34) jumpLabel.Position = UDim2.new(0, 10, 0, y) jumpLabel.BackgroundTransparency = 1
+	jumpLabel.Text = "  Jump Power" jumpLabel.TextColor3 = Color3.new(1, 1, 1) jumpLabel.TextSize = 14 jumpLabel.Font = Enum.Font.GothamBold jumpLabel.TextXAlignment = Enum.TextXAlignment.Left jumpLabel.ZIndex = 4 jumpLabel.Parent = tab
+	Instance.new("UICorner", jumpLabel).CornerRadius = UDim.new(0, 6)
+	jumpLabel.BackgroundColor3 = Color3.fromRGB(52, 52, 52)
+
+	local jumpBox = Instance.new("TextBox")
+	jumpBox.Size = UDim2.new(0, 130, 0, 34) jumpBox.Position = UDim2.new(1, -140, 0, y)
+	jumpBox.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	jumpBox.Text = tostring(Config.Player.JumpPower)
+	jumpBox.PlaceholderText = "jump value..."
+	jumpBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+	jumpBox.PlaceholderColor3 = Color3.fromRGB(170, 170, 170)
+	jumpBox.TextSize = 13 jumpBox.Font = Enum.Font.GothamBold jumpBox.ZIndex = 4 jumpBox.Parent = tab
+	Instance.new("UICorner", jumpBox).CornerRadius = UDim.new(0, 6)
+
+	jumpBox.FocusLost:Connect(function()
+		local val = tonumber(jumpBox.Text)
+		if val then
+			Config.Player.JumpPower = math.clamp(val, 0, 400)
+			jumpBox.Text = tostring(Config.Player.JumpPower)
+			SaveConfig()
+		else
+			jumpBox.Text = tostring(Config.Player.JumpPower)
+		end
+	end)
+	y = y + 48
+
+	section("---Toggles (Independent)")
+
+	-- Noclip Button
+	local noclipBtn = Instance.new("TextButton")
+	noclipBtn.Size = UDim2.new(1, -20, 0, 36) noclipBtn.Position = UDim2.new(0, 10, 0, y)
+	noclipBtn.BackgroundColor3 = Config.Player.Noclip and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
+	noclipBtn.Text = "  Noclip" noclipBtn.TextColor3 = Color3.new(1, 1, 1) noclipBtn.TextSize = 15 noclipBtn.Font = Enum.Font.GothamBold noclipBtn.TextXAlignment = Enum.TextXAlignment.Left noclipBtn.ZIndex = 4 noclipBtn.Parent = tab
+	Instance.new("UICorner", noclipBtn).CornerRadius = UDim.new(0, 6)
+
+	local noclipSel = Instance.new("TextLabel")
+	noclipSel.Size = UDim2.new(0, 90, 1, 0) noclipSel.Position = UDim2.new(1, -95, 0, 0) noclipSel.BackgroundTransparency = 1
+	noclipSel.Text = Config.Player.Noclip and "SELECT" or "" noclipSel.TextColor3 = Color3.fromRGB(0, 255, 120) noclipSel.TextSize = 14 noclipSel.Font = Enum.Font.GothamBold noclipSel.TextXAlignment = Enum.TextXAlignment.Right noclipSel.ZIndex = 5 noclipSel.Parent = noclipBtn
+
+	noclipBtn.MouseButton1Click:Connect(function()
+		local newState = not Config.Player.Noclip
+		ToggleNoclip(newState)
+		noclipSel.Text = newState and "SELECT" or ""
+		noclipBtn.BackgroundColor3 = newState and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
+		SaveConfig()
+	end)
+	y = y + 42
+
+	-- Fly Button
+	local flyBtn = Instance.new("TextButton")
+	flyBtn.Size = UDim2.new(1, -20, 0, 36) flyBtn.Position = UDim2.new(0, 10, 0, y)
+	flyBtn.BackgroundColor3 = Config.Player.Fly and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
+	flyBtn.Text = "  Fly" flyBtn.TextColor3 = Color3.new(1, 1, 1) flyBtn.TextSize = 15 flyBtn.Font = Enum.Font.GothamBold flyBtn.TextXAlignment = Enum.TextXAlignment.Left flyBtn.ZIndex = 4 flyBtn.Parent = tab
+	Instance.new("UICorner", flyBtn).CornerRadius = UDim.new(0, 6)
+
+	local flySel = Instance.new("TextLabel")
+	flySel.Size = UDim2.new(0, 90, 1, 0) flySel.Position = UDim2.new(1, -95, 0, 0) flySel.BackgroundTransparency = 1
+	flySel.Text = Config.Player.Fly and "SELECT" or "" flySel.TextColor3 = Color3.fromRGB(0, 255, 120) flySel.TextSize = 14 flySel.Font = Enum.Font.GothamBold flySel.TextXAlignment = Enum.TextXAlignment.Right flySel.ZIndex = 5 flySel.Parent = flyBtn
+
+	flyBtn.MouseButton1Click:Connect(function()
+		local newState = not Config.Player.Fly
+		ToggleFly(newState)
+		flySel.Text = newState and "SELECT" or ""
+		flyBtn.BackgroundColor3 = newState and Color3.fromRGB(30, 70, 45) or Color3.fromRGB(52, 52, 52)
+		SaveConfig()
+	end)
+	y = y + 44
+
+	tab.CanvasSize = UDim2.new(0, 0, 0, y + 20)
+end
+
 local function BuildFlingTab()
 	local tab = Tabs.Fling
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
@@ -1452,10 +1676,11 @@ local function BuildInfoTab()
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
 	local lbl = Instance.new("TextLabel")
 	lbl.Size = UDim2.new(1, -30, 1, -30) lbl.Position = UDim2.new(0, 15, 0, 15) lbl.BackgroundTransparency = 1
-	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.18.53\n\n- Added Local Anti-Cauldron Bypass\n- Vertical-Oscillation Fling\n- Safe Return & Velocity Recovery"
+	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.18.54\n\n- Added Player Tab (Speed, Jump, Noclip, Fly)\n- Local Anti-Cauldron Bypass\n- Vertical-Oscillation Fling"
 	lbl.TextColor3 = Color3.fromRGB(190, 190, 190) lbl.TextSize = 15 lbl.Font = Enum.Font.GothamBold lbl.TextXAlignment = Enum.TextXAlignment.Left lbl.TextYAlignment = Enum.TextYAlignment.Top lbl.ZIndex = 4 lbl.Parent = tab
 end
 
+BuildPlayerTab()
 BuildFlingTab()
 BuildVisualTab()
 BuildCombatTab()
@@ -1467,7 +1692,7 @@ Players.PlayerRemoving:Connect(BuildFlingTab)
 -- ====================== УМНЫЙ ГЛАВНЫЙ ЦИКЛ ======================
 task.spawn(function()
 	while getgenv().MMV_AdminPanel_Session == currentSession and getgenv().MMV_AdminPanel_Running do
-		local anyActive = Config.ESP.Enabled or Config.Audio.OffAllRadio or Config.Combat.Aimbot or Config.Combat.AutoGun or Config.Combat.AutoShot or Config.Combat.AutoKill or Config.Combat.AutoThrow or Config.Combat.BombSpamActive or Config.AntiCauldron.Enabled
+		local anyActive = Config.ESP.Enabled or Config.Audio.OffAllRadio or Config.Combat.Aimbot or Config.Combat.AutoGun or Config.Combat.AutoShot or Config.Combat.AutoKill or Config.Combat.AutoThrow or Config.Combat.BombSpamActive or Config.AntiCauldron.Enabled or Config.Player.Enabled or Config.Player.Noclip or Config.Player.Fly
 
 		if anyActive then
 			if Config.ESP.Enabled then pcall(UpdateESP) end
@@ -1479,7 +1704,22 @@ task.spawn(function()
 			if Config.Combat.AutoThrow then pcall(ThrowKnifeAtNearest) end
 			if Config.Combat.BombSpamActive then pcall(TriggerBombSpam) end
 			if Config.AntiCauldron.Enabled then pcall(ProcessCauldrons) end
-			task.wait(0.1)
+			
+			-- Применение настроек Player (Speed & Jump)
+			pcall(function()
+				local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+				if hum then
+					if Config.Player.Enabled then
+						hum.WalkSpeed = Config.Player.WalkSpeed
+						hum.JumpPower = Config.Player.JumpPower
+					else
+						hum.WalkSpeed = 16
+						hum.JumpPower = 50
+					end
+				end
+			end)
+
+			task.wait(0.08)
 		else
 			ClearAllESP()
 			task.wait(0.4)
@@ -1488,4 +1728,4 @@ task.spawn(function()
 	ClearAllESP()
 end)
 
-print("[MMV Admin Panel] v5.18.53 успешно загружена!")
+print("[MMV Admin Panel] v5.18.54 успешно загружена!")
