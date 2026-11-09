@@ -1269,6 +1269,52 @@ local function ShotMurder()
 	end)
 end
 
+-- ====================== СТЕЛС / НЕВИДИМОСТЬ ======================
+local isStealthActive = false
+
+local function ToggleStealth(state)
+	isStealthActive = state
+	Config.Exploits.StealthActive = state
+	
+	pcall(function()
+		local stealthRemote = ReplicatedStorage:FindFirstChild("Remotes") 
+			and ReplicatedStorage.Remotes:FindFirstChild("Gameplay") 
+			and ReplicatedStorage.Remotes.Gameplay:FindFirstChild("Stealth")
+			
+		if stealthRemote then
+			-- Отправляем статус на сервер (для других ты полностью невидимый/видимый)
+			stealthRemote:FireServer(state)
+		end
+		
+		-- Делаем локального персонажа полупрозрачным, чтобы самому видеть, где ты стоишь
+		local char = LocalPlayer.Character
+		if char then
+			for _, part in ipairs(char:GetDescendants()) do
+				if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+					part.LocalTransparencyModifier = state and 0.5 or 0
+				end
+			end
+		end
+	end)
+end
+
+-- Автоматически поддерживаем полупрозрачность при обновлении кадров
+RunService.RenderStepped:Connect(function()
+	if isStealthActive then
+		pcall(function()
+			local char = LocalPlayer.Character
+			if char then
+				for _, part in ipairs(char:GetDescendants()) do
+					if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+						part.LocalTransparencyModifier = 0.5
+					end
+				end
+			end
+		end)
+	end
+end)
+
+
 local function KillMurder()
 	if isFiring or (tick() - Config.Exploits.LastShot < 0.4) then return end
 	pcall(function()
@@ -1411,6 +1457,11 @@ local function CreateActionScreenButton(name, text, defaultPos, actionFunc)
 	ActionButtons[name] = btn
 	return btn
 end
+
+CreateActionScreenButton("StealthBtn", "STEALTH MODE", UDim2.new(1, -175, 0, 378), function()
+	local newState = not isStealthActive
+	ToggleStealth(newState)
+end)
 
 CreateActionScreenButton("PickUpGunBtn", "PICK UP GUN", UDim2.new(1, -175, 0, 10), PickUpGun)
 CreateActionScreenButton("ShotMurderBtn", "SHOT MURDER", UDim2.new(1, -175, 0, 56), ShotMurder)
@@ -1901,6 +1952,7 @@ local function BuildCombatTab()
 		y = y + 40
 	end
 
+    uiButtonToggle("Stealth button", "StealthBtn")
 	uiButtonToggle("Pick up gun", "PickUpGunBtn")
 	uiButtonToggle("Shot murder", "ShotMurderBtn")
 	uiButtonToggle("Kill murder", "KillMurderBtn")
