@@ -1269,8 +1269,33 @@ local function ShotMurder()
 	end)
 end
 
--- ====================== СТЕЛС / НЕВИДИМОСТЬ ======================
+-- ====================== СТЕЛС / НЕВИДИМОСТЬ (ИСПРАВЛЕННАЯ) ======================
 local isStealthActive = false
+
+local function ApplyLocalStealth(char, state)
+	pcall(function()
+		if not char then return end
+		for _, part in ipairs(char:GetDescendants()) do
+			if part:IsA("BasePart") or part:IsA("MeshPart") then
+				if part.Name ~= "HumanoidRootPart" then
+					-- Меняем значение только если оно отличается, чтобы не грузить движок
+					local targetTrans = state and 0.5 or 0
+					if part.LocalTransparencyModifier ~= targetTrans then
+						part.LocalTransparencyModifier = targetTrans
+					end
+				end
+			elseif part:IsA("Accessory") then
+				local handle = part:FindFirstChild("Handle")
+				if handle and handle:IsA("BasePart") then
+					local targetTrans = state and 0.5 or 0
+					if handle.LocalTransparencyModifier ~= targetTrans then
+						handle.LocalTransparencyModifier = targetTrans
+					end
+				end
+			end
+		end
+	end)
+end
 
 local function ToggleStealth(state)
 	isStealthActive = state
@@ -1282,38 +1307,36 @@ local function ToggleStealth(state)
 			and ReplicatedStorage.Remotes.Gameplay:FindFirstChild("Stealth")
 			
 		if stealthRemote then
-			-- Отправляем статус на сервер (для других ты полностью невидимый/видимый)
 			stealthRemote:FireServer(state)
 		end
 		
-		-- Делаем локального персонажа полупрозрачным, чтобы самому видеть, где ты стоишь
-		local char = LocalPlayer.Character
-		if char then
-			for _, part in ipairs(char:GetDescendants()) do
-				if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-					part.LocalTransparencyModifier = state and 0.5 or 0
-				end
-			end
-		end
+		ApplyLocalStealth(LocalPlayer.Character, state)
 	end)
 end
 
--- Автоматически поддерживаем полупрозрачность при обновлении кадров
-RunService.RenderStepped:Connect(function()
+-- Следим за респавном
+LocalPlayer.CharacterAdded:Connect(function(newChar)
+	task.wait(0.4)
 	if isStealthActive then
+		ApplyLocalStealth(newChar, true)
 		pcall(function()
-			local char = LocalPlayer.Character
-			if char then
-				for _, part in ipairs(char:GetDescendants()) do
-					if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-						part.LocalTransparencyModifier = 0.5
-					end
-				end
-			end
+			local stealthRemote = ReplicatedStorage:FindFirstChild("Remotes") 
+				and ReplicatedStorage.Remotes:FindFirstChild("Gameplay") 
+				and ReplicatedStorage.Remotes.Gameplay:FindFirstChild("Stealth")
+			if stealthRemote then stealthRemote:FireServer(true) end
 		end)
 	end
 end)
 
+-- Проверяем реже (раз в 0.3 секунды вместо каждого кадра), чтобы не было конфликтов и ухода в полный ноль
+task.spawn(function()
+	while getgenv().MMV_AdminPanel_Session == currentSession do
+		if isStealthActive then
+			ApplyLocalStealth(LocalPlayer.Character, true)
+		end
+		task.wait(0.3)
+	end
+end)
 
 local function KillMurder()
 	if isFiring or (tick() - Config.Exploits.LastShot < 0.4) then return end
