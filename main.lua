@@ -400,7 +400,8 @@ end
 local function GetRoleColor(player)
 	local roleName = "Innocent"
 	pcall(function()
-		if tick() - LastRoleCheck > 1.5 then
+		-- Ускоряем проверку до 0.6 сек, чтобы моментально реагировать на поднятие пушки
+		if tick() - LastRoleCheck > 0.6 then
 			LastRoleCheck = tick()
 			pcall(function()
 				local ok, data = pcall(function() return ReplicatedStorage.Remotes.Gameplay.GetCurrentPlayerData:InvokeServer() end)
@@ -408,24 +409,28 @@ local function GetRoleColor(player)
 			end)
 		end
 
+		local hasKnife, hasGun = false, false
+		local char, backpack = player.Character, player:FindFirstChild("Backpack")
+		
+		-- Сканируем инвентарь на наличие оружия
+		for _, cont in ipairs({char, backpack}) do
+			if cont then
+				for _, item in ipairs(cont:GetChildren()) do
+					pcall(function()
+						local nameL = item.Name:lower()
+						if item:FindFirstChild("IsKnife") or nameL:find("knife") then hasKnife = true end
+						if item:FindFirstChild("IsGun") or nameL:find("gun") or nameL:find("revolver") or nameL:find("sheriff") then hasGun = true end
+					end)
+				end
+			end
+		end
+
 		if RoleCache[player.Name] then
 			local role = tostring(RoleCache[player.Name].Role or RoleCache[player.Name].Team or ""):lower()
 			if role:find("murder") or role:find("killer") then roleName = "Murder"
-			elseif role:find("sheriff") then roleName = "Sheriff"
+			elseif role:find("sheriff") or hasGun then roleName = "Sheriff" -- Если сервер шериф ИЛИ поднял пушку
 			else roleName = "Innocent" end
 		else
-			local char, backpack = player.Character, player:FindFirstChild("Backpack")
-			local hasKnife, hasGun = false, false
-			for _, cont in ipairs({char, backpack}) do
-				if cont then
-					for _, item in ipairs(cont:GetChildren()) do
-						pcall(function()
-							if item:FindFirstChild("IsKnife") or item.Name:lower():find("knife") then hasKnife = true end
-							if item:FindFirstChild("IsGun") or item.Name:lower():find("gun") then hasGun = true end
-						end)
-					end
-				end
-			end
 			if hasKnife then roleName = "Murder"
 			elseif hasGun then roleName = "Sheriff"
 			else roleName = "Innocent" end
@@ -815,16 +820,23 @@ local function IsRealTrap(obj)
 		and obj:FindFirstChild("PlacedPlayer")
 end
 
--- ====================== МЕТКА «СВОЕГО» (ЧЕРЕЗ МАРКЕР В ПЕРСОНАЖЕ) ======================
+-- ====================== НАДЕЖНЫЙ ДЕТЕКТОР [MMV USER] ======================
+-- Регистрируем себя как пользователя панели через атрибут игрока
+pcall(function()
+	LocalPlayer:SetAttribute("MMV_PanelUser", true)
+end)
+
+local HubUserBillboards = {}
+
 local function ProcessHubUserTag(player, head)
 	pcall(function()
-		local char = player.Character
-		if not char then return end
+		-- Проверяем атрибут на объекте Player (он синхронизируется сервером со всеми)
+		local isUser = player:GetAttribute("MMV_PanelUser") == true
 		
-		local hasPanel = char:FindFirstChild("MMV_PanelMarker") ~= nil
-		
-		if hasPanel then
+		if isUser and player.Character then
+			local char = player.Character
 			local hubBB = HubUserBillboards[player]
+			
 			if not hubBB or not hubBB.Parent or hubBB.Parent ~= char then
 				if hubBB then pcall(function() hubBB:Destroy() end) end
 				hubBB = Instance.new("BillboardGui")
@@ -841,7 +853,7 @@ local function ProcessHubUserTag(player, head)
 				lbl.Text = "[MMV USER]"
 				lbl.TextSize = 14
 				lbl.Font = Enum.Font.GothamBold
-				lbl.TextColor3 = Color3.fromRGB(220, 80, 255)
+				lbl.TextColor3 = Color3.fromRGB(220, 80, 255) -- Неоново-фиолетовый
 				lbl.TextStrokeTransparency = 0.1
 				lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 				lbl.Parent = hubBB
