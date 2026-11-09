@@ -1,7 +1,7 @@
 --приветик бро! Этот код без вирусов и полностью бесплатный! Пользуйся на здоровье<3
 -- ==============================================================================
--- MMV Admin Panel | Gemini Ai & ChatGPT Integration
--- Version 5.23.0 (Added Permanent Built-in MMV User Detector)
+-- MMV Admin Panel | Gemini Ai Integration
+-- Version 5.24.0 (Torso Aiming + Network MMV User Detector Fix)
 -- ==============================================================================
 
 local getgenv = getgenv or function() return _G end
@@ -400,7 +400,6 @@ end
 local function GetRoleColor(player)
 	local roleName = "Innocent"
 	pcall(function()
-		-- Ускоряем проверку до 0.6 сек, чтобы моментально реагировать на поднятие пушки
 		if tick() - LastRoleCheck > 0.6 then
 			LastRoleCheck = tick()
 			pcall(function()
@@ -412,7 +411,6 @@ local function GetRoleColor(player)
 		local hasKnife, hasGun = false, false
 		local char, backpack = player.Character, player:FindFirstChild("Backpack")
 		
-		-- Сканируем инвентарь на наличие оружия
 		for _, cont in ipairs({char, backpack}) do
 			if cont then
 				for _, item in ipairs(cont:GetChildren()) do
@@ -428,7 +426,7 @@ local function GetRoleColor(player)
 		if RoleCache[player.Name] then
 			local role = tostring(RoleCache[player.Name].Role or RoleCache[player.Name].Team or ""):lower()
 			if role:find("murder") or role:find("killer") then roleName = "Murder"
-			elseif role:find("sheriff") or hasGun then roleName = "Sheriff" -- Если сервер шериф ИЛИ поднял пушку
+			elseif role:find("sheriff") or hasGun then roleName = "Sheriff"
 			else roleName = "Innocent" end
 		else
 			if hasKnife then roleName = "Murder"
@@ -591,25 +589,13 @@ local function ToggleFly(state)
 				local move = Vector3.zero
 				local speed = 55
 
-				if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-					move = move + camCF.LookVector
-				end
-				if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-					move = move - camCF.LookVector
-				end
-				if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-					move = move - camCF.RightVector
-				end
-				if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-					move = move + camCF.RightVector
-				end
+				if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + camCF.LookVector end
+				if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - camCF.LookVector end
+				if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - camCF.RightVector end
+				if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + camCF.RightVector end
 
-				if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-					move = move + Vector3.new(0, 1, 0)
-				end
-				if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.C) then
-					move = move - Vector3.new(0, 1, 0)
-				end
+				if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0, 1, 0) end
+				if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.C) then move = move - Vector3.new(0, 1, 0) end
 
 				if move.Magnitude > 0 then
 					flyBodyVelocity.Velocity = move.Unit * speed
@@ -683,7 +669,7 @@ local function MorphAvatar()
 	end)
 end
 
--- ====================== AIMBOT С ПРЕДИКЦИЕЙ ======================
+-- ====================== AIMBOT С ПРЕДИКЦИЕЙ (ПО ТОРСУ) ======================
 local function RunAimbot(deltaTime)
 	pcall(function()
 		if not Config.Combat.Aimbot or Config.Fling.Active then return end
@@ -697,17 +683,16 @@ local function RunAimbot(deltaTime)
 			if player ~= LocalPlayer and player.Character then
 				local roleName, _ = GetRoleColor(player)
 				if roleName == "Murder" then
-					local head = player.Character:FindFirstChild("Head")
 					local root = player.Character:FindFirstChild("HumanoidRootPart")
 					local hum = player.Character:FindFirstChildOfClass("Humanoid")
 					
-					if head and root and hum and hum.Health > 0 then
-						local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+					if root and hum and hum.Health > 0 then
+						local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
 						if onScreen then
 							local distToMouse = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
 							if distToMouse < shortestDistance then
 								shortestDistance = distToMouse
-								targetPart = head
+								targetPart = root
 								targetRoot = root
 							end
 						end
@@ -717,7 +702,8 @@ local function RunAimbot(deltaTime)
 		end
 
 		if targetPart and targetRoot then
-			local predictedPos = targetPart.Position + (targetRoot.AssemblyLinearVelocity * 0.07)
+			local aimPos = targetPart.Position + Vector3.new(0, 0.5, 0)
+			local predictedPos = aimPos + (targetRoot.AssemblyLinearVelocity * 0.07)
 			local targetCFrame = CFrame.new(Camera.CFrame.Position, predictedPos)
 			
 			local alpha = math.clamp(deltaTime * Config.Combat.AimbotSmoothness, 0, 1)
@@ -743,7 +729,7 @@ local function TriggerBombSpam()
 					local tHRP = player.Character:FindFirstChild("HumanoidRootPart")
 					local hum = player.Character:FindFirstChild("Humanoid")
 					if tHRP and hum and hum.Health > 0 then
-						targetPos = tHRP.Position
+						targetPos = tHRP.Position + Vector3.new(0, 0.5, 0)
 						break
 					end
 				end
@@ -757,7 +743,7 @@ local function TriggerBombSpam()
 		if hrp then
 			local throwCFrame
 			if targetPos then
-				throwCFrame = CFrame.new(hrp.Position, targetPos + Vector3.new(0, 2, 0))
+				throwCFrame = CFrame.new(hrp.Position, targetPos)
 			else
 				throwCFrame = hrp.CFrame + (hrp.CFrame.LookVector * 10)
 			end
@@ -820,68 +806,61 @@ local function IsRealTrap(obj)
 		and obj:FindFirstChild("PlacedPlayer")
 end
 
--- ====================== НАДЕЖНЫЙ ДЕТЕКТОР [MMV USER] ======================
--- Регистрируем себя как пользователя панели через атрибут игрока
-pcall(function()
-	LocalPlayer:SetAttribute("MMV_PanelUser", true)
-end)
-
-local HubUserBillboards = {}
-
-local function ProcessHubUserTag(player, head)
-	pcall(function()
-		-- Проверяем атрибут на объекте Player (он синхронизируется сервером со всеми)
-		local isUser = player:GetAttribute("MMV_PanelUser") == true
-		
-		if isUser and player.Character then
-			local char = player.Character
-			local hubBB = HubUserBillboards[player]
-			
-			if not hubBB or not hubBB.Parent or hubBB.Parent ~= char then
-				if hubBB then pcall(function() hubBB:Destroy() end) end
-				hubBB = Instance.new("BillboardGui")
-				hubBB.Name = "MMV_UserTag"
-				hubBB.Size = UDim2.new(0, 150, 0, 24)
-				hubBB.StudsOffset = Vector3.new(0, 4.2, 0)
-				hubBB.AlwaysOnTop = true
-				hubBB.Adornee = head
-				
-				local lbl = Instance.new("TextLabel")
-				lbl.Name = "Label"
-				lbl.Size = UDim2.new(1, 0, 1, 0)
-				lbl.BackgroundTransparency = 1
-				lbl.Text = "[MMV USER]"
-				lbl.TextSize = 14
-				lbl.Font = Enum.Font.GothamBold
-				lbl.TextColor3 = Color3.fromRGB(220, 80, 255) -- Неоново-фиолетовый
-				lbl.TextStrokeTransparency = 0.1
-				lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-				lbl.Parent = hubBB
-				
-				hubBB.Parent = char
-				HubUserBillboards[player] = hubBB
-			end
-			hubBB.Enabled = true
-		elseif HubUserBillboards[player] then
-			HubUserBillboards[player].Enabled = false
-		end
-	end)
-end
-
-local function TagCharacter(char)
+-- ====================== СЕТЕВОЙ ДЕТЕКТОР [MMV USER] ======================
+local function DeclareMyself(char)
 	if char then
 		pcall(function()
-			if not char:FindFirstChild("MMV_PanelMarker") then
-				local marker = Instance.new("Folder")
-				marker.Name = "MMV_PanelMarker"
-				marker.Parent = char
+			if not char:FindFirstChild("MMV_Identifier") then
+				local id = Instance.new("StringValue")
+				id.Name = "MMV_Identifier"
+				id.Value = "Active"
+				id.Parent = char
 			end
 		end)
 	end
 end
 
-if LocalPlayer.Character then TagCharacter(LocalPlayer.Character) end
-LocalPlayer.CharacterAdded:Connect(TagCharacter)
+if LocalPlayer.Character then DeclareMyself(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(DeclareMyself)
+
+local function ProcessHubUserTag(player, head)
+	pcall(function()
+		if player ~= LocalPlayer and player.Character then
+			local char = player.Character
+			if char:FindFirstChild("MMV_Identifier") then
+				local hubBB = HubUserBillboards[player]
+				
+				if not hubBB or not hubBB.Parent or hubBB.Parent ~= char then
+					if hubBB then pcall(function() hubBB:Destroy() end) end
+					hubBB = Instance.new("BillboardGui")
+					hubBB.Name = "MMV_UserTag"
+					hubBB.Size = UDim2.new(0, 150, 0, 24)
+					hubBB.StudsOffset = Vector3.new(0, 4.2, 0)
+					hubBB.AlwaysOnTop = true
+					hubBB.Adornee = head or char:FindFirstChild("HumanoidRootPart")
+					
+					local lbl = Instance.new("TextLabel")
+					lbl.Name = "Label"
+					lbl.Size = UDim2.new(1, 0, 1, 0)
+					lbl.BackgroundTransparency = 1
+					lbl.Text = "[MMV USER]"
+					lbl.TextSize = 14
+					lbl.Font = Enum.Font.GothamBold
+					lbl.TextColor3 = Color3.fromRGB(220, 80, 255)
+					lbl.TextStrokeTransparency = 0.1
+					lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+					lbl.Parent = hubBB
+					
+					hubBB.Parent = char
+					HubUserBillboards[player] = hubBB
+				end
+				hubBB.Enabled = true
+			elseif HubUserBillboards[player] then
+				HubUserBillboards[player].Enabled = false
+			end
+		end
+	end)
+end
 
 local function UpdateESP()
 	for _, player in ipairs(Players:GetPlayers()) do
@@ -889,11 +868,10 @@ local function UpdateESP()
 			if player ~= LocalPlayer and player.Character then
 				local char = player.Character
 				local root = char:FindFirstChild("HumanoidRootPart")
-				local head = char:FindFirstChild("Head")
+				local head = char:FindFirstChild("Head") or root
 				local hum = char:FindFirstChildOfClass("Humanoid")
 
-				if root and head and hum and hum.Health > 0 then
-					-- Всегда отрисовываем надпись MMV USER у "своих", независимо от тумблера ESP
+				if root and hum and hum.Health > 0 then
 					ProcessHubUserTag(player, head)
 
 					if Config.ESP.Enabled then
@@ -1066,7 +1044,6 @@ if HasDrawing then
 					if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
 						local char = player.Character 
 						local root = char.HumanoidRootPart 
-						local head = char:FindFirstChild("Head") or root
 						local hum = char:FindFirstChildOfClass("Humanoid")
 						
 						if hum and hum.Health > 0 then
@@ -1083,12 +1060,12 @@ if HasDrawing then
 								if showBox then
 									local box = Boxes[player]
 									if not box then box = DrawingLib.new("Square") box.Thickness = 2 box.Filled = false Boxes[player] = box end
-									local headPos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.8, 0))
+									local topPos = Camera:WorldToViewportPoint(root.Position + Vector3.new(0, 2.5, 0))
 									local legPos = Camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
-									local height = math.abs(headPos.Y - legPos.Y)
+									local height = math.abs(topPos.Y - legPos.Y)
 									local width = height * 0.55
 									box.Size = Vector2.new(width, height)
-									box.Position = Vector2.new(rootPos.X - width / 2, headPos.Y)
+									box.Position = Vector2.new(rootPos.X - width / 2, topPos.Y)
 									box.Color = color box.Visible = true
 								elseif Boxes[player] then Boxes[player].Visible = false end
 							else
@@ -1281,10 +1258,9 @@ local function ShotMurder()
 				local roleName, _ = GetRoleColor(player)
 				if roleName == "Murder" then
 					local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-					local head = player.Character:FindFirstChild("Head")
 					if hrp then
 						isFiring = true Config.Exploits.LastShot = tick()
-						local targetPos = head and head.Position or hrp.Position
+						local targetPos = hrp.Position + Vector3.new(0, 0.5, 0)
 						remote:FireServer(1, targetPos) task.wait(0.2) isFiring = false break
 					end
 				end
@@ -1308,12 +1284,11 @@ local function KillMurder()
 				local roleName, _ = GetRoleColor(player)
 				if roleName == "Murder" then
 					local targetHRP = player.Character:FindFirstChild("HumanoidRootPart")
-					local head = player.Character:FindFirstChild("Head")
 					if targetHRP then
 						isFiring = true Config.Exploits.LastShot = tick()
 						myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 4.2)
 						task.wait(0.04)
-						local targetPos = head and head.Position or targetHRP.Position
+						local targetPos = targetHRP.Position + Vector3.new(0, 0.5, 0)
 						remote:FireServer(1, targetPos) task.wait(0.2) isFiring = false break
 					end
 				end
@@ -1338,22 +1313,20 @@ local function ThrowKnifeAtNearest()
 
 		local nearestDist = math.huge
 		local targetHRP = nil
-		local targetHead = nil
 
 		for _, player in ipairs(Players:GetPlayers()) do
 			if player ~= LocalPlayer and player.Character then
 				local tHRP = player.Character:FindFirstChild("HumanoidRootPart")
 				local hum = player.Character:FindFirstChild("Humanoid")
-				local head = player.Character:FindFirstChild("Head")
 				if tHRP and hum and hum.Health > 0 then
 					local dist = (tHRP.Position - hrp.Position).Magnitude
-					if dist < nearestDist then nearestDist = dist targetHRP = tHRP targetHead = head end
+					if dist < nearestDist then nearestDist = dist targetHRP = tHRP end
 				end
 			end
 		end
 
 		if targetHRP then
-			local targetPos = targetHead and targetHead.Position or targetHRP.Position
+			local targetPos = targetHRP.Position + Vector3.new(0, 0.5, 0)
 			remote:FireServer(CFrame.new(targetPos), handle.Position)
 			pcall(function() handle.Transparency = 1 end)
 
@@ -1454,7 +1427,7 @@ CreateActionScreenButton("BombSpamBtn", "BOMB SPAM", UDim2.new(1, -175, 0, 332),
 	SaveConfig()
 end)
 
--- ====================== УЛЬТРА-СТАБИЛЬНЫЙ FLING ======================
+-- ====================== FLING ======================
 local SelectedTargets = {}
 local function StartFling()
 	if Config.Fling.Active then return end
@@ -1945,7 +1918,7 @@ local function BuildInfoTab()
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
 	local lbl = Instance.new("TextLabel")
 	lbl.Size = UDim2.new(1, -30, 1, -30) lbl.Position = UDim2.new(0, 15, 0, 15) lbl.BackgroundTransparency = 1
-	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.23.0\n\n- Added Permanent MMV User Detector ([MMV USER] Tag)\n- Fixed conflict between Fling and Smooth Aimbot\n- Upgraded Aimbot with smooth Lerp & Prediction\n- Added Show Round Time widget (1 sec - 3 min)\n- Fixed Audio PlaySong & Noclip toggle"
+	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.24.0\n\n- Fixed Aimbot/Shooting for Headless Avatars (Targeting Torso)\n- Implemented Network MMV_Identifier Detector\n- Fast Sheriff Gun Pickup Color Update\n- Full Mobile Support"
 	lbl.TextColor3 = Color3.fromRGB(190, 190, 190) lbl.TextSize = 15 lbl.Font = Enum.Font.GothamBold lbl.TextXAlignment = Enum.TextXAlignment.Left lbl.TextYAlignment = Enum.TextYAlignment.Top lbl.ZIndex = 4 lbl.Parent = tab
 end
 
@@ -1961,7 +1934,6 @@ Players.PlayerRemoving:Connect(BuildFlingTab)
 -- ====================== УМНЫЙ ГЛАВНЫЙ ЦИКЛ ======================
 task.spawn(function()
 	while getgenv().MMV_AdminPanel_Session == currentSession and getgenv().MMV_AdminPanel_Running do
-		-- Цикл проверки детектора пользователей панели всегда активен
 		pcall(UpdateESP)
 
 		local anyActive = Config.ESP.Enabled or Config.Audio.OffAllRadio or Config.Combat.Aimbot or Config.Combat.AutoGun or Config.Combat.AutoShot or Config.Combat.AutoKill or Config.Combat.AutoThrow or Config.Combat.BombSpamActive or Config.AntiCauldron.Enabled or Config.Player.Enabled or Config.Player.Noclip or Config.Player.Fly or Config.ESP.RoundTimer
@@ -1998,4 +1970,4 @@ task.spawn(function()
 	ClearAllESP()
 end)
 
-print("[MMV Admin Panel] v5.23.0 успешно загружена!")
+print("[MMV Admin Panel] v5.24.0 успешно загружена!")
