@@ -331,7 +331,7 @@ Content.ZIndex = 3
 Content.Parent = MainFrame
 
 local Tabs = {}
-local TabNames = {"Player", "Fling", "Visual", "Combat", "Info"}
+local TabNames = {"Player", "Fling", "Visual", "Combat", "Fun", "Info"}
 local CurrentTab = "Player"
 
 for _, name in ipairs(TabNames) do
@@ -1278,7 +1278,6 @@ local function ApplyLocalStealth(char, state)
 		for _, part in ipairs(char:GetDescendants()) do
 			if part:IsA("BasePart") or part:IsA("MeshPart") then
 				if part.Name ~= "HumanoidRootPart" then
-					-- Меняем значение только если оно отличается, чтобы не грузить движок
 					local targetTrans = state and 0.5 or 0
 					if part.LocalTransparencyModifier ~= targetTrans then
 						part.LocalTransparencyModifier = targetTrans
@@ -1314,7 +1313,6 @@ local function ToggleStealth(state)
 	end)
 end
 
--- Следим за респавном
 LocalPlayer.CharacterAdded:Connect(function(newChar)
 	task.wait(0.4)
 	if isStealthActive then
@@ -1328,7 +1326,6 @@ LocalPlayer.CharacterAdded:Connect(function(newChar)
 	end
 end)
 
--- Проверяем реже (раз в 0.3 секунды вместо каждого кадра), чтобы не было конфликтов и ухода в полный ноль
 task.spawn(function()
 	while getgenv().MMV_AdminPanel_Session == currentSession do
 		if isStealthActive then
@@ -1988,12 +1985,80 @@ local function BuildCombatTab()
 	tab.CanvasSize = UDim2.new(0, 0, 0, y + 20)
 end
 
+-- ====================== ВКЛАДКА "FUN" (НОВАЯ) ======================
+local function BuildFunTab()
+	local tab = Tabs.Fun
+	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
+	local y = 12
+
+	local function section(t)
+		local s = Instance.new("TextLabel")
+		s.Size = UDim2.new(1, -20, 0, 22) s.Position = UDim2.new(0, 10, 0, y) s.BackgroundTransparency = 1
+		s.Text = t s.TextColor3 = Color3.fromRGB(160, 160, 160) s.Font = Enum.Font.GothamBold s.TextSize = 13 s.TextXAlignment = Enum.TextXAlignment.Left s.ZIndex = 4 s.Parent = tab
+		y = y + 26
+	end
+
+	section("---Fun Features")
+
+	-- Кнопка Best Sticker
+	local stickerBtn = Instance.new("TextButton")
+	stickerBtn.Size = UDim2.new(1, -20, 0, 36)
+	stickerBtn.Position = UDim2.new(0, 10, 0, y)
+	stickerBtn.BackgroundColor3 = Color3.fromRGB(52, 52, 52)
+	stickerBtn.Text = "  Best Sticker"
+	stickerBtn.TextColor3 = Color3.new(1, 1, 1)
+	stickerBtn.TextSize = 15
+	stickerBtn.Font = Enum.Font.GothamBold
+	stickerBtn.TextXAlignment = Enum.TextXAlignment.Left
+	stickerBtn.ZIndex = 4
+	stickerBtn.Parent = tab
+	Instance.new("UICorner", stickerBtn).CornerRadius = UDim.new(0, 6)
+
+	stickerBtn.MouseButton1Click:Connect(function()
+		pcall(function()
+			local targetId = "128696267610654"
+			
+			-- Ищем инструмент SprayPaint в персонаже или рюкзаке
+			local sprayTool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("SprayPaint")
+				or LocalPlayer.Backpack:FindFirstChild("SprayPaint")
+				
+			if not sprayTool then return end
+			
+			if sprayTool.Parent == LocalPlayer.Backpack then
+				LocalPlayer.Character.Humanoid:EquipTool(sprayTool)
+				task.wait(0.15)
+			end
+			
+			-- Прописываем полный ID в GUI спрея
+			local sprayGui = sprayTool:FindFirstChild("SprayGui")
+			if sprayGui then
+				local textBox = sprayGui:FindFirstChild("Frame", true) and sprayGui.Frame:FindFirstChild("TextBox", true)
+				if textBox then
+					textBox.Text = targetId
+				end
+			end
+			
+			-- Вызываем серверный Remote для отрисовки
+			local replicateToy = ReplicatedStorage:FindFirstChild("Remotes") 
+				and ReplicatedStorage.Remotes:FindFirstChild("Extras") 
+				and ReplicatedStorage.Remotes.Extras:FindFirstChild("ReplicateToy")
+				
+			if replicateToy then
+				replicateToy:InvokeServer("SprayPaint")
+			end
+		end)
+	end)
+	y = y + 44
+
+	tab.CanvasSize = UDim2.new(0, 0, 0, y + 20)
+end
+
 local function BuildInfoTab()
 	local tab = Tabs.Info
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
 	local lbl = Instance.new("TextLabel")
 	lbl.Size = UDim2.new(1, -30, 1, -30) lbl.Position = UDim2.new(0, 15, 0, 15) lbl.BackgroundTransparency = 1
-	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.24.0\n\n- Fixed Aimbot/Shooting for Headless Avatars (Targeting Torso)\n- Implemented Network MMV_Identifier Detector\n- Fast Sheriff Gun Pickup Color Update\n- Full Mobile Support"
+	lbl.Text = "Mmv Script Hub\nPowered by Gemini Ai & ChatGPT\n\nVersion: 5.24.0\n\n- Fixed Aimbot/Shooting for Headless Avatars (Targeting Torso)\n- Implemented Network MMV_Identifier Detector\n- Fast Sheriff Gun Pickup Color Update\n- Added Fun Tab & Best Sticker\n- Full Mobile Support"
 	lbl.TextColor3 = Color3.fromRGB(190, 190, 190) lbl.TextSize = 15 lbl.Font = Enum.Font.GothamBold lbl.TextXAlignment = Enum.TextXAlignment.Left lbl.TextYAlignment = Enum.TextYAlignment.Top lbl.ZIndex = 4 lbl.Parent = tab
 end
 
@@ -2001,6 +2066,7 @@ BuildPlayerTab()
 BuildFlingTab()
 BuildVisualTab()
 BuildCombatTab()
+BuildFunTab()
 BuildInfoTab()
 
 Players.PlayerAdded:Connect(BuildFlingTab)
