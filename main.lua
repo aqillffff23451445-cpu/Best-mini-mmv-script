@@ -1985,7 +1985,7 @@ local function BuildCombatTab()
 	tab.CanvasSize = UDim2.new(0, 0, 0, y + 20)
 end
 
--- ====================== ВКЛАДКА "FUN" (НОВАЯ) ======================
+-- ====================== ВКЛАДКА "FUN" (ОБНОВЛЕННАЯ) ======================
 local function BuildFunTab()
 	local tab = Tabs.Fun
 	for _, c in ipairs(tab:GetChildren()) do c:Destroy() end
@@ -2000,7 +2000,7 @@ local function BuildFunTab()
 
 	section("---Fun Features")
 
-	-- Кнопка Best Sticker
+	-- Кнопка Best Sticker с авто-экипировкой и заполнением точного пути к GUI
 	local stickerBtn = Instance.new("TextButton")
 	stickerBtn.Size = UDim2.new(1, -20, 0, 36)
 	stickerBtn.Position = UDim2.new(0, 10, 0, y)
@@ -2015,37 +2015,57 @@ local function BuildFunTab()
 	Instance.new("UICorner", stickerBtn).CornerRadius = UDim.new(0, 6)
 
 	stickerBtn.MouseButton1Click:Connect(function()
-		pcall(function()
-			local targetId = "128696267610654"
-			
-			-- Ищем инструмент SprayPaint в персонаже или рюкзаке
-			local sprayTool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("SprayPaint")
-				or LocalPlayer.Backpack:FindFirstChild("SprayPaint")
+		task.spawn(function()
+			pcall(function()
+				local targetId = "128696267610654"
+				local char = LocalPlayer.Character
+				local backpack = LocalPlayer:FindFirstChild("Backpack")
+				local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
 				
-			if not sprayTool then return end
-			
-			if sprayTool.Parent == LocalPlayer.Backpack then
-				LocalPlayer.Character.Humanoid:EquipTool(sprayTool)
-				task.wait(0.15)
-			end
-			
-			-- Прописываем полный ID в GUI спрея
-			local sprayGui = sprayTool:FindFirstChild("SprayGui")
-			if sprayGui then
-				local textBox = sprayGui:FindFirstChild("Frame", true) and sprayGui.Frame:FindFirstChild("TextBox", true)
-				if textBox then
-					textBox.Text = targetId
+				if not char or not backpack or not playerGui then return end
+				
+				-- 1. Ищем спрей в руках или рюкзаке
+				local sprayTool = char:FindFirstChild("SprayPaint") or backpack:FindFirstChild("SprayPaint")
+				if not sprayTool then return end
+				
+				-- 2. Если он в рюкзаке — принудительно берем в руки
+				if sprayTool.Parent == backpack then
+					local humanoid = char:FindFirstChildOfClass("Humanoid")
+					if humanoid then
+						humanoid:EquipTool(sprayTool)
+					end
+					-- Ждем, пока инструмент реально окажется в персонаже
+					local waitTimeout = tick() + 1
+					while sprayTool.Parent ~= char and tick() < waitTimeout do
+						task.wait(0.05)
+					end
 				end
-			end
-			
-			-- Вызываем серверный Remote для отрисовки
-			local replicateToy = ReplicatedStorage:FindFirstChild("Remotes") 
-				and ReplicatedStorage.Remotes:FindFirstChild("Extras") 
-				and ReplicatedStorage.Remotes.Extras:FindFirstChild("ReplicateToy")
 				
-			if replicateToy then
-				replicateToy:InvokeServer("SprayPaint")
-			end
+				-- 3. Ждем появления SprayGui по твоему точному пути в PlayerGui
+				local sprayGui = playerGui:WaitForChild("SprayGui", 1.5)
+				if sprayGui then
+					local textBox = sprayGui:WaitForChild("Frame", 1):WaitForChild("Frame", 1):WaitForChild("TextBox", 1)
+					if textBox and textBox:IsA("TextBox") then
+						textBox.Text = targetId
+						-- Вызываем событие изменения текста, чтобы игра подхватила новый ID
+						pcall(function()
+							for _, conn in ipairs(getconnections(textBox.FocusLost) or {}) do
+								conn:Fire()
+							end
+						end)
+					end
+				end
+				
+				-- 4. Вызываем серверный Remote для отрисовки спрея
+				task.wait(0.05)
+				local replicateToy = ReplicatedStorage:FindFirstChild("Remotes") 
+					and ReplicatedStorage.Remotes:FindFirstChild("Extras") 
+					and ReplicatedStorage.Remotes.Extras:FindFirstChild("ReplicateToy")
+					
+				if replicateToy then
+					replicateToy:InvokeServer("SprayPaint")
+				end
+			end)
 		end)
 	end)
 	y = y + 44
